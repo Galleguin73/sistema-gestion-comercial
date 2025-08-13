@@ -1,0 +1,1 @@
+ALTER TABLE Proveedores ADD COLUMN condicion_iva TEXT;

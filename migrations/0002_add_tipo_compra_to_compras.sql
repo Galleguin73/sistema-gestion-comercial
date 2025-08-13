@@ -1,0 +1,1 @@
+ALTER TABLE Compras ADD COLUMN tipo_compra TEXT;
