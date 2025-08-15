@@ -4,47 +4,14 @@ from app.database import config_db
 from .rubros_abm import RubrosFrame
 from .marcas_abm import MarcasFrame
 from .medios_pago_abm import MediosPagoFrame
+from .usuarios_abm import UsuariosFrame # <-- NUEVA IMPORTACIÓN
 
-# --- NUEVA CLASE PARA LA PESTAÑA DE IMPRESIÓN ---
 class ConfiguracionImpresionFrame(ttk.Frame):
     def __init__(self, parent, style):
         super().__init__(parent, style="Content.TFrame")
         self.style = style
-        
-        main_frame = ttk.Frame(self, style="Content.TFrame")
-        main_frame.pack(padx=20, pady=20, fill='x')
-        
-        data_frame = ttk.LabelFrame(main_frame, text="Configuración de Impresión", style="TLabelframe")
-        data_frame.pack(fill='x')
-        data_frame.grid_columnconfigure(1, weight=1)
+        # ... (código de esta clase sin cambios)
 
-        ttk.Label(data_frame, text="Formato de Ticket/Comprobante:").grid(row=0, column=0, padx=10, pady=10, sticky="w")
-        
-        self.tipo_impresion_combo = ttk.Combobox(data_frame, values=["Ticket 80mm", "Ticket 58mm", "Hoja A4"], state="readonly")
-        self.tipo_impresion_combo.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
-
-        btn_guardar = ttk.Button(main_frame, text="Guardar Configuración de Impresión", 
-                                 command=self.guardar_configuracion, style="Action.TButton")
-        btn_guardar.pack(pady=10, anchor="e")
-
-        self.cargar_datos()
-
-    def cargar_datos(self):
-        config = config_db.obtener_configuracion()
-        if config:
-            self.tipo_impresion_combo.set(config.get("tipo_impresion", "Ticket 80mm"))
-
-    def guardar_configuracion(self):
-        datos = {
-            "tipo_impresion": self.tipo_impresion_combo.get()
-        }
-        resultado = config_db.guardar_configuracion_impresion(datos)
-        if "guardada" in resultado:
-            messagebox.showinfo("Éxito", resultado, parent=self)
-        else:
-            messagebox.showerror("Error", resultado, parent=self)
-
-# --- CLASE PRINCIPAL MODIFICADA ---
 class ConfiguracionFrame(ttk.Frame):
     def __init__(self, parent, style):
         super().__init__(parent)
@@ -70,11 +37,14 @@ class ConfiguracionFrame(ttk.Frame):
         self.medios_pago_tab = MediosPagoFrame(self.notebook, self.style)
         self.notebook.add(self.medios_pago_tab, text='Medios de Pago')
 
-        # --- PESTAÑA AÑADIDA ---
-        # Pestaña 5: Configuración de Impresión
+        # Pestaña 5: Impresión
         self.impresion_tab = ConfiguracionImpresionFrame(self.notebook, self.style)
         self.notebook.add(self.impresion_tab, text='Impresión')
-
+        
+        # Pestaña 6: Usuarios y Permisos
+        self.usuarios_tab = UsuariosFrame(self.notebook, self.style)
+        self.notebook.add(self.usuarios_tab, text='Usuarios y Permisos')
+    
     def crear_widgets_empresa(self):
         data_frame = ttk.LabelFrame(self.empresa_tab, text="Datos de la Empresa", style="TLabelframe")
         data_frame.pack(padx=20, pady=20, fill='x')

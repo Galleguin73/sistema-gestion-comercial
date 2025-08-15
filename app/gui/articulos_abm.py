@@ -115,7 +115,7 @@ class VentanaArticulo(tk.Toplevel):
 
         titulo = "Editar Artículo" if self.articulo_id else "Agregar Nuevo Artículo"
         self.title(titulo)
-        self.geometry("700x500")
+        self.geometry("700x550")
         self.transient(parent)
         self.grab_set()
 
@@ -163,9 +163,14 @@ class VentanaArticulo(tk.Toplevel):
         self.entries['unidad_de_medida'] = ttk.Combobox(self.frame, values=["UN", "KG"], state="readonly")
         self.entries['unidad_de_medida'].grid(row=row_num, column=1, padx=5, pady=5, sticky="ew")
 
-        ttk.Label(self.frame, text="Stock Actual:").grid(row=row_num, column=2, padx=5, pady=5, sticky="w")
+        ttk.Label(self.frame, text="Stock Mínimo (Alerta):").grid(row=row_num, column=2, padx=5, pady=5, sticky="w")
+        self.entries['stock_minimo'] = ttk.Entry(self.frame)
+        self.entries['stock_minimo'].grid(row=row_num, column=3, padx=5, pady=5, sticky="ew")
+        row_num += 1
+        
+        ttk.Label(self.frame, text="Stock Actual:").grid(row=row_num, column=0, padx=5, pady=5, sticky="w")
         self.entries['stock'] = ttk.Entry(self.frame)
-        self.entries['stock'].grid(row=row_num, column=3, padx=5, pady=5, sticky="ew")
+        self.entries['stock'].grid(row=row_num, column=1, padx=5, pady=5, sticky="ew")
         row_num += 1
 
         ttk.Separator(self.frame, orient='horizontal').grid(row=row_num, column=0, columnspan=4, sticky='ew', pady=10)
@@ -210,6 +215,7 @@ class VentanaArticulo(tk.Toplevel):
             self.entries['unidad_de_medida'].set("UN")
             self.iva_combo.set("21")
             self.entries['stock'].insert(0, "0.0")
+            self.entries['stock_minimo'].insert(0, "0.0")
 
     def abrir_ventana_nueva_marca(self):
         VentanaNuevaMarca(self)
@@ -357,7 +363,6 @@ class ArticulosFrame(ttk.Frame):
         
         columnas = ("id", "codigo", "marca", "nombre", "stock", "precio_venta", "estado")
         self.tree = ttk.Treeview(self.tree_frame, columns=columnas, show="headings")
-        self.tree.heading("id", text="ID")
         self.tree.heading("codigo", text="Código")
         self.tree.heading("marca", text="Marca")
         self.tree.heading("nombre", text="Nombre")
@@ -365,8 +370,10 @@ class ArticulosFrame(ttk.Frame):
         self.tree.heading("precio_venta", text="Precio Venta")
         self.tree.heading("estado", text="Estado")
         
-        self.tree.column("id", width=40, anchor='center')
-        self.tree.column("codigo", width=120)
+        self.tree.column("id", width=0, stretch=tk.NO)
+        self.tree.column("codigo", width=150)
+        self.tree.column("marca", width=120)
+        self.tree.column("nombre", width=300)
         self.tree.column("stock", width=80, anchor='center')
         self.tree.column("precio_venta", width=100, anchor='e')
         self.tree.column("estado", width=80, anchor='center')
@@ -454,7 +461,7 @@ class ArticulosFrame(ttk.Frame):
         if not selected_item: return
         
         articulo_id = self.tree.item(selected_item, "values")[0]
-        nombre_articulo = self.tree.item(selected_item, "values")[3] # Corrección aquí
+        nombre_articulo = self.tree.item(selected_item, "values")[3]
         
         if messagebox.askyesno("Confirmar", f"¿Está seguro de que desea reactivar el artículo '{nombre_articulo}'?"):
             resultado = articulos_db.reactivar_articulo(articulo_id)

@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-# CORRECCIÓN: Importamos desde los nuevos módulos de base de datos
-from app.database import clientes_db, config_db 
+from app.database import clientes_db, config_db, ventas_db
+from tkcalendar import DateEntry
 
 class VentanaCliente(tk.Toplevel):
     def __init__(self, parent, cliente_id=None, on_success_callback=None):
@@ -15,7 +15,7 @@ class VentanaCliente(tk.Toplevel):
         self.geometry("700x600")
         self.transient(parent)
         self.grab_set()
-
+        
         self.frame = ttk.Frame(self, padding="10")
         self.frame.pack(fill='both', expand=True)
         self.frame.grid_columnconfigure(1, weight=1)
@@ -191,12 +191,15 @@ class ClientesFrame(ttk.Frame):
         self.delete_btn = ttk.Button(self.button_frame, text="Eliminar", command=self.eliminar_cliente, style="Action.TButton")
         self.delete_btn.pack(pady=5, fill='x')
 
+        self.history_btn = ttk.Button(self.button_frame, text="Ver Historial", command=self.ver_historial_cliente, style="Action.TButton")
+        self.history_btn.pack(pady=5, fill='x')
+
         self.actualizar_lista()
 
     def actualizar_lista(self):
         for row in self.tree.get_children():
             self.tree.delete(row)
-        clientes = clientes_db.obtener_clientes() # Referencia actualizada
+        clientes = clientes_db.obtener_clientes()
         for cliente in clientes:
             self.tree.insert("", "end", values=cliente)
 
@@ -222,3 +225,67 @@ class ClientesFrame(ttk.Frame):
             clientes_db.eliminar_cliente(cliente_id)
             messagebox.showinfo("Éxito", "Cliente eliminado correctamente.")
             self.actualizar_lista()
+
+    def ver_historial_cliente(self):
+        selected_item = self.tree.focus()
+        if not selected_item:
+            messagebox.showwarning("Sin Selección", "Por favor, seleccione un cliente de la lista.")
+            return
+        
+        values = self.tree.item(selected_item, "values")
+        cliente_id, cliente_nombre = values[0], values[1]
+
+        historial_window = tk.Toplevel(self)
+        historial_window.title(f"Historial de Ventas - {cliente_nombre}")
+        historial_window.transient(self)
+        historial_window.grab_set()
+        
+        # Frame para los filtros de fecha
+        filtros_frame = ttk.Frame(historial_window, padding="10")
+        filtros_frame.pack(fill="x")
+        ttk.Label(filtros_frame, text="Desde:").pack(side="left", padx=(0,5))
+        fecha_desde_entry = DateEntry(filtros_frame, date_pattern='yyyy-mm-dd', width=12)
+        fecha_desde_entry.pack(side="left", padx=5)
+        ttk.Label(filtros_frame, text="Hasta:").pack(side="left", padx=5)
+        fecha_hasta_entry = DateEntry(filtros_frame, date_pattern='yyyy-mm-dd', width=12)
+        fecha_hasta_entry.pack(side="left", padx=5)
+
+        # Frame para la tabla
+        tree_frame = ttk.Frame(historial_window)
+        tree_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        columnas = ("id", "fecha", "nro", "total", "estado")
+        # Usamos displaycolumns para ocultar la columna 'id' visualmente
+        tree_historial = ttk.Treeview(tree_frame, columns=columnas, show="headings", displaycolumns=("fecha", "nro", "total", "estado"))
+        tree_historial.heading("fecha", text="Fecha")
+        tree_historial.heading("nro", text="Comprobante")
+        tree_historial.heading("total", text="Monto Total")
+        tree_historial.heading("estado", text="Estado")
+        tree_historial.column("total", anchor="e")
+        tree_historial.pack(side="left", fill="both", expand=True)
+
+        # Barra de Scroll
+        scrollbar_historial = ttk.Scrollbar(tree_frame, orient="vertical", command=tree_historial.yview)
+        scrollbar_historial.pack(side='right', fill='y')
+        tree_historial.configure(yscrollcommand=scrollbar_historial.set)
+
+        def cargar_historial():
+            for row in tree_historial.get_children():
+                tree_historial.delete(row)
+            
+            desde = fecha_desde_entry.get() if fecha_desde_entry.get_date() else None
+            hasta = fecha_hasta_entry.get() if fecha_hasta_entry.get_date() else None
+            
+            ventas = ventas_db.obtener_ventas_por_cliente(cliente_id, desde, hasta)
+            for venta in ventas:
+                id_venta, fecha, nro_comp, monto_total, estado = venta
+                # Formateamos el monto antes de insertarlo
+                valores_formateados = (id_venta, fecha, nro_comp, f"$ {monto_total:.2f}", estado)
+                tree_historial.insert("", "end", values=valores_formateados)
+        
+        ttk.Button(filtros_frame, text="Filtrar", command=cargar_historial).pack(side="left", padx=10)
+        
+        # Cargar todos los datos inicialmente
+        fecha_desde_entry.set_date(None)
+        fecha_hasta_entry.set_date(None)
+        cargar_historial()

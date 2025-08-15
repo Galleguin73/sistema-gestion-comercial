@@ -205,3 +205,31 @@ def anular_compra(compra_id):
     finally:
         if conn:
             conn.close()
+
+def obtener_compras_por_proveedor(proveedor_id, fecha_desde=None, fecha_hasta=None):
+    """Obtiene el historial de compras para un proveedor específico, opcionalmente filtrado por fecha."""
+    conn = _crear_conexion()
+    if conn is None: return []
+    try:
+        cursor = conn.cursor()
+        query = """
+            SELECT id, fecha_compra, numero_factura, monto_total, estado
+            FROM Compras
+            WHERE proveedor_id = ?
+        """
+        params = [proveedor_id]
+
+        if fecha_desde and fecha_hasta:
+            query += " AND DATE(fecha_compra) BETWEEN ? AND ?"
+            params.extend([fecha_desde, fecha_hasta])
+
+        query += " ORDER BY fecha_compra DESC"
+        
+        cursor.execute(query, tuple(params))
+        return cursor.fetchall()
+    except sqlite3.Error as e:
+        print(f"Error al obtener compras del proveedor: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()

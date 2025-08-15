@@ -447,3 +447,31 @@ def obtener_ventas_ultimo_mes_por_dia():
     finally:
         if conn:
             conn.close()
+
+def obtener_ventas_por_cliente(cliente_id, fecha_desde=None, fecha_hasta=None):
+    """Obtiene el historial de ventas para un cliente específico, opcionalmente filtrado por fecha."""
+    conn = _crear_conexion()
+    if conn is None: return []
+    try:
+        cursor = conn.cursor()
+        query = """
+            SELECT id, fecha_venta, numero_comprobante, monto_total, estado
+            FROM Ventas 
+            WHERE cliente_id = ? 
+        """
+        params = [cliente_id]
+
+        if fecha_desde and fecha_hasta:
+            query += " AND DATE(fecha_venta) BETWEEN ? AND ?"
+            params.extend([fecha_desde, fecha_hasta])
+
+        query += " ORDER BY fecha_venta DESC"
+        
+        cursor.execute(query, tuple(params))
+        return cursor.fetchall()
+    except sqlite3.Error as e:
+        print(f"Error al obtener ventas del cliente: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()

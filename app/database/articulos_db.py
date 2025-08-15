@@ -390,3 +390,27 @@ def realizar_ajuste_stock(articulo_id, tipo_ajuste, cantidad, concepto):
     finally:
         if conn:
             conn.close()
+
+def obtener_articulos_stock_bajo():
+    """
+    Devuelve una lista de artículos cuyo stock actual es menor o igual
+    a su stock mínimo definido.
+    """
+    conn = _crear_conexion()
+    if conn is None: return []
+    try:
+        cursor = conn.cursor()
+        query = """
+            SELECT nombre, stock, stock_minimo
+            FROM Articulos
+            WHERE estado = 'Activo' AND stock <= stock_minimo AND stock_minimo > 0
+            ORDER BY nombre
+        """
+        cursor.execute(query)
+        return cursor.fetchall()
+    except sqlite3.Error as e:
+        print(f"Error al obtener artículos con stock bajo: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()

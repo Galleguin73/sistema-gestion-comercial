@@ -92,8 +92,8 @@ class MainWindow(ThemedTk):
 
         for texto, comando in modulos.items():
             es_admin = self.usuario_logueado['rol'] == 'admin'
-            tiene_permiso = self.usuario_logueado['permisos'].get(texto, False)
-
+            tiene_permiso = texto in self.usuario_logueado['permisos']
+            
             if texto == "Inicio" or es_admin or tiene_permiso:
                 btn = ttk.Button(modulos_frame, text=texto, command=comando, style="Nav.TButton")
                 btn.pack(pady=2, padx=20, fill='x')
