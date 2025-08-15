@@ -2,6 +2,77 @@ import tkinter as tk
 from tkinter import ttk, messagebox, TclError
 from app.database import articulos_db
 
+class VentanaAjusteStock(tk.Toplevel):
+    def __init__(self, parent, articulo):
+        super().__init__(parent)
+        self.parent = parent
+        self.articulo = articulo 
+
+        self.title("Ajuste de Stock")
+        self.geometry("450x300")
+        self.transient(parent)
+        self.grab_set()
+
+        frame = ttk.Frame(self, padding="10")
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(1, weight=1)
+
+        # Info del artículo (no editable)
+        ttk.Label(frame, text="Artículo:", font=("Helvetica", 10, "bold")).grid(row=0, column=0, sticky="w", padx=5, pady=2)
+        ttk.Label(frame, text=f"{self.articulo[3]} ({self.articulo[2]})").grid(row=0, column=1, sticky="w", padx=5, pady=2)
+        ttk.Label(frame, text="Stock Actual:", font=("Helvetica", 10, "bold")).grid(row=1, column=0, sticky="w", padx=5, pady=2)
+        ttk.Label(frame, text=f"{self.articulo[4]}").grid(row=1, column=1, sticky="w", padx=5, pady=2)
+
+        # Formulario de ajuste
+        ttk.Label(frame, text="Tipo de Ajuste:").grid(row=2, column=0, sticky="w", padx=5, pady=10)
+        self.tipo_ajuste_combo = ttk.Combobox(frame, values=["Ingreso Extraordinario", "Egreso por Vencimiento"], state="readonly")
+        self.tipo_ajuste_combo.grid(row=2, column=1, sticky="ew", padx=5, pady=10)
+        
+        ttk.Label(frame, text="Cantidad:").grid(row=3, column=0, sticky="w", padx=5, pady=2)
+        self.cantidad_entry = ttk.Entry(frame)
+        self.cantidad_entry.grid(row=3, column=1, sticky="ew", padx=5)
+
+        ttk.Label(frame, text="Concepto/Motivo:").grid(row=4, column=0, sticky="w", padx=5, pady=2)
+        self.concepto_entry = ttk.Entry(frame)
+        self.concepto_entry.grid(row=4, column=1, sticky="ew", padx=5)
+        
+        btn_confirmar = ttk.Button(frame, text="Confirmar Ajuste", command=self.confirmar_ajuste)
+        btn_confirmar.grid(row=5, column=0, columnspan=2, pady=20, padx=5, sticky="ew")
+
+        self.tipo_ajuste_combo.focus_set()
+
+    def confirmar_ajuste(self):
+        tipo_seleccionado = self.tipo_ajuste_combo.get()
+        concepto = self.concepto_entry.get()
+        
+        if not tipo_seleccionado:
+            messagebox.showwarning("Dato Faltante", "Debe seleccionar un tipo de ajuste.", parent=self)
+            return
+
+        try:
+            cantidad = float(self.cantidad_entry.get())
+            if cantidad <= 0:
+                raise ValueError()
+        except ValueError:
+            messagebox.showwarning("Dato Inválido", "La cantidad debe ser un número positivo.", parent=self)
+            return
+
+        tipo_ajuste_db = 'INGRESO' if "Ingreso" in tipo_seleccionado else 'EGRESO'
+        
+        if not concepto:
+            concepto = tipo_seleccionado
+
+        articulo_id = self.articulo[0]
+        
+        resultado = articulos_db.realizar_ajuste_stock(articulo_id, tipo_ajuste_db, cantidad, concepto)
+
+        if "exitosamente" in resultado:
+            messagebox.showinfo("Éxito", resultado, parent=self.parent)
+            self.parent.actualizar_lista()
+            self.destroy()
+        else:
+            messagebox.showerror("Error", resultado, parent=self)
+
 class VentanaNuevaMarca(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
@@ -267,54 +338,93 @@ class ArticulosFrame(ttk.Frame):
     def __init__(self, parent, style):
         super().__init__(parent, style="Content.TFrame")
         self.style = style
-        self.style.configure("Action.TButton", font=("Helvetica", 10, "bold"))
-        self.style.configure("Treeview.Heading", font=("Helvetica", 10, "bold"))
-        self.grid_rowconfigure(0, weight=1)
+        
+        self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
+        filtros_frame = ttk.Frame(self, style="Content.TFrame")
+        filtros_frame.grid(row=0, column=0, padx=10, pady=(10,0), sticky="ew")
+        
+        self.ver_inactivos_var = tk.BooleanVar()
+        self.check_inactivos = ttk.Checkbutton(filtros_frame, text="Ver artículos inactivos", 
+                                               variable=self.ver_inactivos_var, command=self.actualizar_lista)
+        self.check_inactivos.pack(side='left')
+        
         self.tree_frame = ttk.Frame(self, style="Content.TFrame")
-        self.tree_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        self.tree_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
         self.tree_frame.grid_rowconfigure(0, weight=1)
         self.tree_frame.grid_columnconfigure(0, weight=1)
         
-        columnas = ("id", "codigo", "marca", "nombre", "rubro", "subrubro", "precio_venta", "stock")
+        columnas = ("id", "codigo", "marca", "nombre", "stock", "precio_venta", "estado")
         self.tree = ttk.Treeview(self.tree_frame, columns=columnas, show="headings")
         self.tree.heading("id", text="ID")
         self.tree.heading("codigo", text="Código")
         self.tree.heading("marca", text="Marca")
         self.tree.heading("nombre", text="Nombre")
-        self.tree.heading("rubro", text="Rubro")
-        self.tree.heading("subrubro", text="Subrubro")
-        self.tree.heading("precio_venta", text="Precio Venta")
         self.tree.heading("stock", text="Stock")
+        self.tree.heading("precio_venta", text="Precio Venta")
+        self.tree.heading("estado", text="Estado")
+        
         self.tree.column("id", width=40, anchor='center')
         self.tree.column("codigo", width=120)
-        self.tree.column("precio_venta", width=100, anchor='e')
         self.tree.column("stock", width=80, anchor='center')
+        self.tree.column("precio_venta", width=100, anchor='e')
+        self.tree.column("estado", width=80, anchor='center')
+        
         self.tree.pack(side='left', fill='both', expand=True)
         self.tree.bind("<Double-1>", self.abrir_ventana_edicion)
-        
+        self.tree.bind("<<TreeviewSelect>>", self.actualizar_botones_estado)
+
         scrollbar = ttk.Scrollbar(self.tree_frame, orient="vertical", command=self.tree.yview)
         scrollbar.pack(side='right', fill='y')
         self.tree.configure(yscrollcommand=scrollbar.set)
         
         self.button_frame = ttk.Frame(self, style="Content.TFrame")
-        self.button_frame.grid(row=0, column=1, padx=10, pady=10, sticky="ns")
+        self.button_frame.grid(row=1, column=1, padx=10, pady=10, sticky="ns")
+        
         self.add_btn = ttk.Button(self.button_frame, text="Agregar Nuevo", command=self.abrir_ventana_creacion, style="Action.TButton")
         self.add_btn.pack(pady=5, fill='x')
+        
         self.update_btn = ttk.Button(self.button_frame, text="Modificar", command=self.abrir_ventana_edicion, style="Action.TButton")
         self.update_btn.pack(pady=5, fill='x')
-        self.delete_btn = ttk.Button(self.button_frame, text="Eliminar", command=self.eliminar_articulo, style="Action.TButton")
-        self.delete_btn.pack(pady=5, fill='x')
+
+        self.btn_toggle_estado = ttk.Button(self.button_frame, text="Desactivar", style="Action.TButton")
+        self.btn_toggle_estado.pack(pady=5, fill='x')
+
+        self.btn_ajuste_stock = ttk.Button(self.button_frame, text="Ajuste de Stock", command=self.abrir_ventana_ajuste_stock, style="Action.TButton")
+        self.btn_ajuste_stock.pack(pady=5, fill='x')
 
         self.actualizar_lista()
 
     def actualizar_lista(self):
         for row in self.tree.get_children():
             self.tree.delete(row)
-        articulos = articulos_db.obtener_articulos()
+            
+        ver_inactivos = self.ver_inactivos_var.get()
+        articulos = articulos_db.obtener_articulos(incluir_inactivos=ver_inactivos)
+        
         for articulo in articulos:
             self.tree.insert("", "end", values=articulo)
+        
+        self.actualizar_botones_estado()
+
+    def actualizar_botones_estado(self, event=None):
+        selected_item = self.tree.focus()
+        if not selected_item:
+            self.btn_toggle_estado.config(state="disabled")
+            return
+        
+        self.btn_toggle_estado.config(state="normal")
+        
+        values = self.tree.item(selected_item, "values")
+        if not values: return
+
+        estado = values[6]
+        
+        if estado == 'Activo':
+            self.btn_toggle_estado.config(text="Desactivar", command=self.desactivar_articulo_seleccionado)
+        else:
+            self.btn_toggle_estado.config(text="Reactivar", command=self.reactivar_articulo_seleccionado)
 
     def abrir_ventana_creacion(self):
         VentanaArticulo(self)
@@ -327,13 +437,35 @@ class ArticulosFrame(ttk.Frame):
         articulo_id = self.tree.item(selected_item, "values")[0]
         VentanaArticulo(self, articulo_id=articulo_id)
 
-    def eliminar_articulo(self):
+    def desactivar_articulo_seleccionado(self):
+        selected_item = self.tree.focus()
+        if not selected_item: return
+
+        articulo_id = self.tree.item(selected_item, "values")[0]
+        nombre_articulo = self.tree.item(selected_item, "values")[3]
+        
+        if messagebox.askyesno("Confirmar", f"¿Está seguro de que desea desactivar el artículo '{nombre_articulo}'?"):
+            resultado = articulos_db.desactivar_articulo(articulo_id)
+            messagebox.showinfo("Resultado", resultado)
+            self.actualizar_lista()
+    
+    def reactivar_articulo_seleccionado(self):
+        selected_item = self.tree.focus()
+        if not selected_item: return
+        
+        articulo_id = self.tree.item(selected_item, "values")[0]
+        nombre_articulo = self.tree.item(selected_item, "values")[3] # Corrección aquí
+        
+        if messagebox.askyesno("Confirmar", f"¿Está seguro de que desea reactivar el artículo '{nombre_articulo}'?"):
+            resultado = articulos_db.reactivar_articulo(articulo_id)
+            messagebox.showinfo("Resultado", resultado)
+            self.actualizar_lista()
+
+    def abrir_ventana_ajuste_stock(self):
         selected_item = self.tree.focus()
         if not selected_item:
-            messagebox.showwarning("Sin Selección", "Por favor, seleccione un artículo de la lista.")
+            messagebox.showwarning("Sin Selección", "Seleccione un artículo para realizar un ajuste de stock.")
             return
-        articulo_id = self.tree.item(selected_item, "values")[0]
-        nombre = self.tree.item(selected_item, "values")[3]
-        if messagebox.askyesno("Confirmar Eliminación", f"¿Está seguro de que desea eliminar '{nombre}'?"):
-            articulos_db.eliminar_articulo(articulo_id)
-            self.actualizar_lista()
+        
+        articulo_seleccionado = self.tree.item(selected_item, "values")
+        VentanaAjusteStock(self, articulo_seleccionado)

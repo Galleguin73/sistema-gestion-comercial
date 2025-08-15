@@ -1,5 +1,6 @@
 import sqlite3
 import os
+from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_DIR = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), 'database')
@@ -204,24 +205,28 @@ def agregar_articulo(datos):
         if conn:
             conn.close()
 
-def obtener_articulos():
+def obtener_articulos(incluir_inactivos=False):
+    """
+    Obtiene una lista de artículos para el Treeview principal.
+    Si incluir_inactivos es True, muestra todos los artículos.
+    Ahora también devuelve la columna 'estado'.
+    """
     conn = _crear_conexion()
     if conn is None: return []
     try:
         cursor = conn.cursor()
         query = """
-            SELECT a.id, a.codigo_barras, m.nombre, a.nombre, r.nombre, s.nombre, a.precio_venta, a.stock
+            SELECT a.id, a.codigo_barras, m.nombre, a.nombre, a.stock, a.precio_venta, a.estado
             FROM Articulos a
             LEFT JOIN Marcas m ON a.marca_id = m.id
-            LEFT JOIN Subrubros s ON a.subrubro_id = s.id
-            LEFT JOIN Rubros r ON s.rubro_id = r.id
-            ORDER BY a.nombre
         """
+        if not incluir_inactivos:
+            query += " WHERE a.estado = 'Activo'"
+        
+        query += " ORDER BY a.nombre"
+        
         cursor.execute(query)
         return cursor.fetchall()
-    except sqlite3.Error as e:
-        print(f"Error al obtener artículos: {e}")
-        return []
     finally:
         if conn:
             conn.close()
@@ -238,8 +243,10 @@ def obtener_articulos_para_compra(criterio=None):
         """
         params = []
         if criterio:
-            query += " WHERE a.codigo_barras LIKE ? OR a.nombre LIKE ?"
+            query += " WHERE (a.codigo_barras LIKE ? OR a.nombre LIKE ?) AND a.estado = 'Activo'"
             params.extend([f'%{criterio}%', f'%{criterio}%'])
+        else:
+            query += " WHERE a.estado = 'Activo'"
         query += " ORDER BY a.nombre"
         cursor.execute(query, params)
         return cursor.fetchall()
@@ -282,18 +289,6 @@ def modificar_articulo(datos):
         if conn:
             conn.close()
 
-def eliminar_articulo(id_articulo):
-    conn = _crear_conexion()
-    if conn is None: return
-    try:
-        cursor = conn.cursor()
-        query = "DELETE FROM Articulos WHERE id = ?"
-        cursor.execute(query, (id_articulo,))
-        conn.commit()
-    finally:
-        if conn:
-            conn.close()
-
 def buscar_articulos_pos(criterio):
     conn = _crear_conexion()
     if conn is None: return []
@@ -303,7 +298,8 @@ def buscar_articulos_pos(criterio):
             SELECT a.id, a.nombre, a.precio_venta, a.unidad_de_medida, m.nombre
             FROM Articulos a
             LEFT JOIN Marcas m ON a.marca_id = m.id
-            WHERE UPPER(a.codigo_barras) LIKE UPPER(?) OR UPPER(a.nombre) LIKE UPPER(?)
+            WHERE (UPPER(a.codigo_barras) LIKE UPPER(?) OR UPPER(a.nombre) LIKE UPPER(?))
+            AND a.estado = 'Activo'
             ORDER BY a.nombre
             LIMIT 10
         """
@@ -317,6 +313,80 @@ def buscar_articulos_pos(criterio):
     except sqlite3.Error as e:
         print(f"Error al buscar artículos para POS: {e}")
         return []
+    finally:
+        if conn:
+            conn.close()
+
+def desactivar_articulo(articulo_id):
+    """Cambia el estado de un artículo a 'Inactivo'."""
+    conn = _crear_conexion()
+    if conn is None: return "Error de conexión."
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE Articulos SET estado = 'Inactivo' WHERE id = ?", (articulo_id,))
+        conn.commit()
+        return "Artículo desactivado correctamente."
+    except sqlite3.Error as e:
+        return f"Error de base de datos: {e}"
+    finally:
+        if conn:
+            conn.close()
+
+def reactivar_articulo(articulo_id):
+    """Cambia el estado de un artículo a 'Activo'."""
+    conn = _crear_conexion()
+    if conn is None: return "Error de conexión."
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE Articulos SET estado = 'Activo' WHERE id = ?", (articulo_id,))
+        conn.commit()
+        return "Artículo reactivado correctamente."
+    except sqlite3.Error as e:
+        return f"Error de base de datos: {e}"
+    finally:
+        if conn:
+            conn.close()
+
+def realizar_ajuste_stock(articulo_id, tipo_ajuste, cantidad, concepto):
+    """
+    Realiza un ajuste de stock y lo registra en la tabla de auditoría.
+    """
+    conn = _crear_conexion()
+    if conn is None: return "Error de conexión."
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute("BEGIN TRANSACTION")
+
+        cursor.execute("SELECT stock FROM Articulos WHERE id = ?", (articulo_id,))
+        stock_anterior = cursor.fetchone()[0]
+
+        if tipo_ajuste == 'INGRESO':
+            stock_nuevo = stock_anterior + cantidad
+        elif tipo_ajuste == 'EGRESO':
+            stock_nuevo = stock_anterior - cantidad
+        else:
+            raise ValueError("Tipo de ajuste no válido")
+
+        if stock_nuevo < 0:
+            raise ValueError("El ajuste no puede resultar en stock negativo.")
+
+        cursor.execute("UPDATE Articulos SET stock = ? WHERE id = ?", (stock_nuevo, articulo_id))
+
+        query_log = """
+            INSERT INTO AjustesStock 
+            (articulo_id, fecha, tipo_ajuste, cantidad, concepto, stock_anterior, stock_nuevo)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """
+        cursor.execute(query_log, (
+            articulo_id, datetime.now(), tipo_ajuste, cantidad, concepto, stock_anterior, stock_nuevo
+        ))
+
+        conn.commit()
+        return "Ajuste de stock realizado exitosamente."
+    except Exception as e:
+        conn.rollback()
+        return f"Error al realizar el ajuste: {e}"
     finally:
         if conn:
             conn.close()

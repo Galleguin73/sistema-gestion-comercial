@@ -131,3 +131,19 @@ def eliminar_medio_pago(id_pago):
     finally:
         if conn:
             conn.close()
+
+def guardar_configuracion_impresion(datos):
+    """Guarda la configuración de impresión."""
+    conn = _crear_conexion()
+    if conn is None: return "Error de conexión."
+    try:
+        cursor = conn.cursor()
+        query = "UPDATE Configuracion SET tipo_impresion = ? WHERE id = 1"
+        cursor.execute(query, (datos['tipo_impresion'],))
+        conn.commit()
+        return "Configuración de impresión guardada."
+    except sqlite3.Error as e:
+        return f"Error de base de datos: {e}"
+    finally:
+        if conn:
+            conn.close()

@@ -155,7 +155,6 @@ class ComprasFrame(ttk.Frame):
 
         # Fila 1: Fecha y Proveedor
         ttk.Label(factura_frame, text="Fecha Factura:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        # 2. Reemplazamos el Entry por el DateEntry
         self.fecha_factura_entry = DateEntry(factura_frame, date_pattern='yyyy-mm-dd', width=12, background='darkblue', foreground='white', borderwidth=2)
         self.fecha_factura_entry.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
 
@@ -176,14 +175,13 @@ class ComprasFrame(ttk.Frame):
         self.condicion_combo = ttk.Combobox(factura_frame, values=["Contado", "Cuenta Corriente"], state="readonly")
         self.condicion_combo.grid(row=1, column=5, padx=5, pady=5, sticky="ew")
 
-        # Fila 3: Tipo de Compra
-        ttk.Label(factura_frame, text="Tipo de Compra:").grid(row=2, column=0, padx=5, pady=5, sticky="w")
-        self.tipo_compra_combo = ttk.Combobox(factura_frame, 
-            values=["Mercadería de Reventa", "Consumibles", "Impuestos y Servicios", "Gastos Generales"], 
-            state="readonly")
-        self.tipo_compra_combo.grid(row=2, column=1, columnspan=5, padx=5, pady=5, sticky="ew")
+        # --- CAMBIO: Se elimina el 'Tipo de Compra' ---
+        # ttk.Label(factura_frame, text="Tipo de Compra:").grid(row=2, column=0, padx=5, pady=5, sticky="w")
+        # self.tipo_compra_combo = ttk.Combobox(factura_frame, 
+        #     values=["Mercadería de Reventa", "Consumibles", "Impuestos y Servicios", "Gastos Generales"], 
+        #     state="readonly")
+        # self.tipo_compra_combo.grid(row=2, column=1, columnspan=5, padx=5, pady=5, sticky="ew")
 
-        # --- El resto de la clase no cambia ---
         articulo_frame = ttk.LabelFrame(self, text="Detalle de Artículo", style="TLabelframe")
         articulo_frame.grid(row=1, column=0, padx=10, pady=5, sticky="ew")
         self.buscar_articulo_btn = ttk.Button(articulo_frame, text="Buscar / Agregar Artículo a la Factura", style="Action.TButton")
@@ -277,7 +275,8 @@ class ComprasFrame(ttk.Frame):
             "fecha_compra": self.fecha_factura_entry.get(),
             "monto_total": total_factura,
             "condicion": self.condicion_combo.get(),
-            "tipo_compra": self.tipo_compra_combo.get()
+            # --- CAMBIO: Valor fijo para 'tipo_compra' ---
+            "tipo_compra": "Mercadería de Reventa"
         }
         resultado = compras_db.registrar_compra(datos_factura, self.items_factura)
         if "exitosamente" in resultado:
@@ -289,10 +288,8 @@ class ComprasFrame(ttk.Frame):
     def limpiar_formulario(self):
         self.proveedor_combo.set('')
         self.nro_factura_entry.delete(0, tk.END)
-        # self.fecha_factura_entry.set_date(datetime.date.today()) # No funciona así directamente
         self.tipo_factura_combo.set('')
         self.condicion_combo.set('')
-        self.tipo_compra_combo.set('')
         for row in self.tree.get_children():
             self.tree.delete(row)
         self.items_factura = []

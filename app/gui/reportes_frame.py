@@ -1,8 +1,9 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-from app.database import ventas_db, clientes_db, proveedores_db
+from app.database import ventas_db, clientes_db, proveedores_db, compras_db
 from datetime import datetime
 from tkcalendar import DateEntry
+from collections import defaultdict
 
 class ReportesFrame(ttk.Frame):
     def __init__(self, parent, style):
@@ -12,44 +13,41 @@ class ReportesFrame(ttk.Frame):
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # Creamos los frames de las pestañas
+        # --- PESTAÑAS INTEGRADAS Y ACTUALIZADAS ---
         self.ventas_periodo_tab = ttk.Frame(self.notebook, style="Content.TFrame")
+        self.compras_periodo_tab = ttk.Frame(self.notebook, style="Content.TFrame")
+        self.ventas_categorias_tab = ttk.Frame(self.notebook, style="Content.TFrame")
         self.ventas_articulo_tab = ttk.Frame(self.notebook, style="Content.TFrame")
         self.ventas_marca_tab = ttk.Frame(self.notebook, style="Content.TFrame")
-        self.ventas_rubro_tab = ttk.Frame(self.notebook, style="Content.TFrame")
-        self.ventas_subrubro_tab = ttk.Frame(self.notebook, style="Content.TFrame")
         self.cc_clientes_tab = ttk.Frame(self.notebook, style="Content.TFrame")
         self.cc_proveedores_tab = ttk.Frame(self.notebook, style="Content.TFrame")
 
-        # Añadimos las pestañas al notebook
         self.notebook.add(self.ventas_periodo_tab, text='Ventas por Período')
+        self.notebook.add(self.compras_periodo_tab, text='Compras por Período')
+        self.notebook.add(self.ventas_categorias_tab, text='Ventas por Categorías')
         self.notebook.add(self.ventas_articulo_tab, text='Ventas por Artículo')
         self.notebook.add(self.ventas_marca_tab, text='Ventas por Marca')
-        self.notebook.add(self.ventas_rubro_tab, text='Ventas por Rubro')
-        self.notebook.add(self.ventas_subrubro_tab, text='Ventas por Subrubro')
         self.notebook.add(self.cc_clientes_tab, text='Cta. Cte. Clientes')
         self.notebook.add(self.cc_proveedores_tab, text='Cta. Cte. Proveedores')
         
         # Creamos los widgets para la primera pestaña visible
         self.crear_widgets_ventas_periodo()
         
-        # Vinculamos el evento de cambio de pestaña a una nueva función
+        # Vinculamos el evento de cambio de pestaña
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
 
     def on_tab_changed(self, event):
         """Se ejecuta cada vez que el usuario cambia de pestaña."""
         selected_tab = self.notebook.index(self.notebook.select())
         
-        # Verificamos si la pestaña ya tiene widgets. Si no, los crea.
-        # Esto asegura que los widgets (y las consultas a la BD) se creen solo una vez.
-        if selected_tab == 1 and not self.ventas_articulo_tab.winfo_children():
+        if selected_tab == 1 and not self.compras_periodo_tab.winfo_children():
+            self.crear_widgets_compras_periodo()
+        elif selected_tab == 2 and not self.ventas_categorias_tab.winfo_children():
+            self.crear_widgets_ventas_categorias()
+        elif selected_tab == 3 and not self.ventas_articulo_tab.winfo_children():
             self.crear_widgets_ventas_articulo()
-        elif selected_tab == 2 and not self.ventas_marca_tab.winfo_children():
+        elif selected_tab == 4 and not self.ventas_marca_tab.winfo_children():
             self.crear_widgets_ventas_marca()
-        elif selected_tab == 3 and not self.ventas_rubro_tab.winfo_children():
-            self.crear_widgets_ventas_rubro()
-        elif selected_tab == 4 and not self.ventas_subrubro_tab.winfo_children():
-            self.crear_widgets_ventas_subrubro()
         elif selected_tab == 5 and not self.cc_clientes_tab.winfo_children():
             self.crear_widgets_cc_clientes()
         elif selected_tab == 6 and not self.cc_proveedores_tab.winfo_children():
@@ -72,7 +70,6 @@ class ReportesFrame(ttk.Frame):
         
         return fecha_desde_entry, fecha_hasta_entry
 
-   
     def crear_widgets_ventas_periodo(self):
         frame = self.ventas_periodo_tab
         frame.grid_rowconfigure(1, weight=1)
@@ -84,22 +81,29 @@ class ReportesFrame(ttk.Frame):
         resultados_frame.grid_rowconfigure(0, weight=1)
         resultados_frame.grid_columnconfigure(0, weight=1)
 
-        columnas = ("id", "fecha", "cliente", "comprobante", "total")
+        columnas = ("id", "fecha", "cliente", "comprobante", "total", "estado")
         self.tree_ventas_periodo = ttk.Treeview(resultados_frame, columns=columnas, show="headings")
         self.tree_ventas_periodo.heading("id", text="ID Venta")
         self.tree_ventas_periodo.heading("fecha", text="Fecha")
         self.tree_ventas_periodo.heading("cliente", text="Cliente")
         self.tree_ventas_periodo.heading("comprobante", text="Comprobante")
         self.tree_ventas_periodo.heading("total", text="Monto Total")
+        self.tree_ventas_periodo.heading("estado", text="Estado")
         self.tree_ventas_periodo.column("id", width=80, anchor="center")
         self.tree_ventas_periodo.column("total", anchor="e")
+        self.tree_ventas_periodo.column("estado", width=100, anchor="center")
         self.tree_ventas_periodo.grid(row=0, column=0, sticky="nsew")
         scrollbar = ttk.Scrollbar(resultados_frame, orient="vertical", command=self.tree_ventas_periodo.yview)
         scrollbar.grid(row=0, column=1, sticky="ns")
         self.tree_ventas_periodo.configure(yscrollcommand=scrollbar.set)
 
+        acciones_frame = ttk.Frame(frame, style="Content.TFrame")
+        acciones_frame.grid(row=2, column=0, padx=10, pady=(0, 10), sticky="w")
+        btn_anular_venta = ttk.Button(acciones_frame, text="Anular Venta Seleccionada", command=self.anular_venta_seleccionada, style="Action.TButton")
+        btn_anular_venta.pack(side="left")
+
         total_frame = ttk.Frame(frame, style="Content.TFrame")
-        total_frame.grid(row=2, column=0, padx=10, pady=10, sticky="e")
+        total_frame.grid(row=3, column=0, padx=10, pady=10, sticky="e")
         ttk.Label(total_frame, text="Total Facturado:", font=("Helvetica", 12, "bold"), style="TLabel").pack(side="left")
         self.vp_total_label = ttk.Label(total_frame, text="$ 0.00", font=("Helvetica", 12, "bold"), style="TLabel")
         self.vp_total_label.pack(side="left")
@@ -109,18 +113,144 @@ class ReportesFrame(ttk.Frame):
             messagebox.showwarning("Datos Incompletos", "Por favor, ingrese ambas fechas.")
             return
         for row in self.tree_ventas_periodo.get_children(): self.tree_ventas_periodo.delete(row)
+        
         ventas = ventas_db.obtener_ventas_por_periodo(fecha_desde, fecha_hasta)
         total_periodo = 0.0
         for venta in ventas:
-            try:
-                fecha_obj = datetime.strptime(venta[1], '%Y-%m-%d %H:%M:%S.%f')
-                fecha_formateada = fecha_obj.strftime('%d/%m/%Y %H:%M')
-            except ValueError:
-                fecha_formateada = venta[1]
             monto_total = venta[4]
-            total_periodo += monto_total
-            self.tree_ventas_periodo.insert("", "end", values=(venta[0], fecha_formateada, venta[2], venta[3], f"$ {monto_total:.2f}"))
+            estado = venta[5]
+            if estado != 'ANULADA':
+                total_periodo += monto_total
+            
+            self.tree_ventas_periodo.insert("", "end", values=venta)
         self.vp_total_label.config(text=f"$ {total_periodo:.2f}")
+
+    def anular_venta_seleccionada(self):
+        selected_item = self.tree_ventas_periodo.focus()
+        if not selected_item:
+            messagebox.showwarning("Sin Selección", "Por favor, seleccione una venta para anular.", parent=self)
+            return
+
+        venta_id = self.tree_ventas_periodo.item(selected_item, "values")[0]
+        
+        confirmar = messagebox.askyesno("Confirmar Anulación", f"¿Está seguro de que desea anular la venta ID {venta_id}?", parent=self)
+        if confirmar:
+            resultado = ventas_db.anular_venta(venta_id)
+            if "exitosamente" in resultado:
+                messagebox.showinfo("Éxito", resultado, parent=self)
+                self.generar_reporte_ventas_periodo(self.vp_fecha_desde.get(), self.vp_fecha_hasta.get())
+            else:
+                messagebox.showerror("Error", resultado, parent=self)
+    
+    def crear_widgets_compras_periodo(self):
+        frame = self.compras_periodo_tab
+        frame.grid_rowconfigure(1, weight=1)
+        frame.grid_columnconfigure(0, weight=1)
+        self.cp_fecha_desde, self.cp_fecha_hasta = self._crear_widgets_filtro(frame, self.generar_reporte_compras_periodo)
+        
+        resultados_frame = ttk.Frame(frame, style="Content.TFrame")
+        resultados_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+        resultados_frame.grid_rowconfigure(0, weight=1)
+        resultados_frame.grid_columnconfigure(0, weight=1)
+
+        columnas = ("id", "fecha", "proveedor", "factura", "total", "estado")
+        self.tree_compras_periodo = ttk.Treeview(resultados_frame, columns=columnas, show="headings")
+        self.tree_compras_periodo.heading("id", text="ID Compra")
+        self.tree_compras_periodo.heading("fecha", text="Fecha")
+        self.tree_compras_periodo.heading("proveedor", text="Proveedor")
+        self.tree_compras_periodo.heading("factura", text="N° Factura")
+        self.tree_compras_periodo.heading("total", text="Monto Total")
+        self.tree_compras_periodo.heading("estado", text="Estado")
+        self.tree_compras_periodo.column("id", width=80, anchor="center")
+        self.tree_compras_periodo.column("total", anchor="e")
+        self.tree_compras_periodo.column("estado", width=100, anchor="center")
+        self.tree_compras_periodo.grid(row=0, column=0, sticky="nsew")
+        scrollbar = ttk.Scrollbar(resultados_frame, orient="vertical", command=self.tree_compras_periodo.yview)
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        self.tree_compras_periodo.configure(yscrollcommand=scrollbar.set)
+
+        acciones_frame = ttk.Frame(frame, style="Content.TFrame")
+        acciones_frame.grid(row=2, column=0, padx=10, pady=(0, 10), sticky="w")
+        btn_anular_compra = ttk.Button(acciones_frame, text="Anular Compra Seleccionada", command=self.anular_compra_seleccionada, style="Action.TButton")
+        btn_anular_compra.pack(side="left")
+
+    def generar_reporte_compras_periodo(self, fecha_desde, fecha_hasta):
+        if not fecha_desde or not fecha_hasta:
+            messagebox.showwarning("Datos Incompletos", "Por favor, ingrese ambas fechas.")
+            return
+        for row in self.tree_compras_periodo.get_children(): self.tree_compras_periodo.delete(row)
+        
+        compras = compras_db.obtener_compras_por_periodo(fecha_desde, fecha_hasta)
+        for compra in compras:
+            self.tree_compras_periodo.insert("", "end", values=compra)
+
+    def anular_compra_seleccionada(self):
+        selected_item = self.tree_compras_periodo.focus()
+        if not selected_item:
+            messagebox.showwarning("Sin Selección", "Por favor, seleccione una compra para anular.", parent=self)
+            return
+
+        compra_id = self.tree_compras_periodo.item(selected_item, "values")[0]
+        
+        confirmar = messagebox.askyesno("Confirmar Anulación", f"¿Está seguro de que desea anular la compra ID {compra_id}?", parent=self)
+        if confirmar:
+            resultado = compras_db.anular_compra(compra_id)
+            if "exitosamente" in resultado:
+                messagebox.showinfo("Éxito", resultado, parent=self)
+                self.generar_reporte_compras_periodo(self.cp_fecha_desde.get(), self.cp_fecha_hasta.get())
+            else:
+                messagebox.showerror("Error", resultado, parent=self)
+    
+    def crear_widgets_ventas_categorias(self):
+        frame = self.ventas_categorias_tab
+        frame.grid_rowconfigure(1, weight=1)
+        frame.grid_columnconfigure(0, weight=1)
+        self.vc_fecha_desde, self.vc_fecha_hasta = self._crear_widgets_filtro(frame, self.generar_reporte_ventas_categorias)
+
+        resultados_frame = ttk.Frame(frame, style="Content.TFrame")
+        resultados_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+        resultados_frame.grid_rowconfigure(0, weight=1)
+        resultados_frame.grid_columnconfigure(0, weight=1)
+        
+        self.tree_ventas_categorias = ttk.Treeview(resultados_frame, columns=("cantidad", "total"), show="tree headings")
+        self.tree_ventas_categorias.heading("#0", text="Rubro / Subrubro")
+        self.tree_ventas_categorias.heading("cantidad", text="Cant. Vendida")
+        self.tree_ventas_categorias.heading("total", text="Total Vendido (Neto)")
+        self.tree_ventas_categorias.column("cantidad", anchor="center", width=120)
+        self.tree_ventas_categorias.column("total", anchor="e", width=150)
+        self.tree_ventas_categorias.grid(row=0, column=0, sticky="nsew")
+        
+        scrollbar = ttk.Scrollbar(resultados_frame, orient="vertical", command=self.tree_ventas_categorias.yview)
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        self.tree_ventas_categorias.configure(yscrollcommand=scrollbar.set)
+    
+    def generar_reporte_ventas_categorias(self, fecha_desde, fecha_hasta):
+        if not fecha_desde or not fecha_hasta:
+            messagebox.showwarning("Datos Incompletos", "Por favor, ingrese ambas fechas.")
+            return
+            
+        for row in self.tree_ventas_categorias.get_children():
+            self.tree_ventas_categorias.delete(row)
+
+        datos = ventas_db.reporte_ventas_por_rubro_y_subrubro(fecha_desde, fecha_hasta)
+
+        rubros_data = defaultdict(lambda: {'cantidad': 0, 'total': 0})
+        rubro_nodes = {}
+
+        for rubro, subrubro, cantidad, total in datos:
+            if rubro not in rubro_nodes:
+                rubro_nodes[rubro] = self.tree_ventas_categorias.insert("", "end", text=rubro, open=True)
+            
+            rubros_data[rubro]['cantidad'] += cantidad
+            rubros_data[rubro]['total'] += total
+            
+            valores_subrubro = (f"{cantidad:.2f}", f"$ {total:.2f}")
+            self.tree_ventas_categorias.insert(rubro_nodes[rubro], "end", text=f"  - {subrubro}", values=valores_subrubro)
+
+        for rubro, node_id in rubro_nodes.items():
+            total_rubro = rubros_data[rubro]
+            valores_rubro = (f"{total_rubro['cantidad']:.2f}", f"$ {total_rubro['total']:.2f}")
+            self.tree_ventas_categorias.item(node_id, values=valores_rubro)
 
     def crear_widgets_ventas_articulo(self):
         frame = self.ventas_articulo_tab
@@ -190,73 +320,6 @@ class ReportesFrame(ttk.Frame):
         for marca in marcas:
             valores = (marca[0], f"{marca[1]:.2f}", f"$ {marca[2]:.2f}")
             self.tree_ventas_marca.insert("", "end", values=valores)
-
-    def crear_widgets_ventas_rubro(self):
-        frame = self.ventas_rubro_tab
-        frame.grid_rowconfigure(1, weight=1)
-        frame.grid_columnconfigure(0, weight=1)
-        self.vr_fecha_desde, self.vr_fecha_hasta = self._crear_widgets_filtro(frame, self.generar_reporte_ventas_rubro)
-
-        resultados_frame = ttk.Frame(frame, style="Content.TFrame")
-        resultados_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
-        resultados_frame.grid_rowconfigure(0, weight=1)
-        resultados_frame.grid_columnconfigure(0, weight=1)
-
-        columnas = ("rubro", "cantidad", "total")
-        self.tree_ventas_rubro = ttk.Treeview(resultados_frame, columns=columnas, show="headings")
-        self.tree_ventas_rubro.heading("rubro", text="Rubro")
-        self.tree_ventas_rubro.heading("cantidad", text="Cant. Vendida")
-        self.tree_ventas_rubro.heading("total", text="Total Vendido")
-        self.tree_ventas_rubro.column("cantidad", anchor="center")
-        self.tree_ventas_rubro.column("total", anchor="e")
-        self.tree_ventas_rubro.grid(row=0, column=0, sticky="nsew")
-        scrollbar = ttk.Scrollbar(resultados_frame, orient="vertical", command=self.tree_ventas_rubro.yview)
-        scrollbar.grid(row=0, column=1, sticky="ns")
-        self.tree_ventas_rubro.configure(yscrollcommand=scrollbar.set)
-        
-    def generar_reporte_ventas_rubro(self, fecha_desde, fecha_hasta):
-        if not fecha_desde or not fecha_hasta:
-            messagebox.showwarning("Datos Incompletos", "Por favor, ingrese ambas fechas.")
-            return
-        for row in self.tree_ventas_rubro.get_children(): self.tree_ventas_rubro.delete(row)
-        rubros = ventas_db.reporte_ventas_por_rubro(fecha_desde, fecha_hasta)
-        for rubro in rubros:
-            valores = (rubro[0], f"{rubro[1]:.2f}", f"$ {rubro[2]:.2f}")
-            self.tree_ventas_rubro.insert("", "end", values=valores)
-
-    def crear_widgets_ventas_subrubro(self):
-        frame = self.ventas_subrubro_tab
-        frame.grid_rowconfigure(1, weight=1)
-        frame.grid_columnconfigure(0, weight=1)
-        self.vs_fecha_desde, self.vs_fecha_hasta = self._crear_widgets_filtro(frame, self.generar_reporte_ventas_subrubro)
-
-        resultados_frame = ttk.Frame(frame, style="Content.TFrame")
-        resultados_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
-        resultados_frame.grid_rowconfigure(0, weight=1)
-        resultados_frame.grid_columnconfigure(0, weight=1)
-
-        columnas = ("subrubro", "rubro", "cantidad", "total")
-        self.tree_ventas_subrubro = ttk.Treeview(resultados_frame, columns=columnas, show="headings")
-        self.tree_ventas_subrubro.heading("subrubro", text="Subrubro")
-        self.tree_ventas_subrubro.heading("rubro", text="Rubro")
-        self.tree_ventas_subrubro.heading("cantidad", text="Cant. Vendida")
-        self.tree_ventas_subrubro.heading("total", text="Total Vendido")
-        self.tree_ventas_subrubro.column("cantidad", anchor="center")
-        self.tree_ventas_subrubro.column("total", anchor="e")
-        self.tree_ventas_subrubro.grid(row=0, column=0, sticky="nsew")
-        scrollbar = ttk.Scrollbar(resultados_frame, orient="vertical", command=self.tree_ventas_subrubro.yview)
-        scrollbar.grid(row=0, column=1, sticky="ns")
-        self.tree_ventas_subrubro.configure(yscrollcommand=scrollbar.set)
-
-    def generar_reporte_ventas_subrubro(self, fecha_desde, fecha_hasta):
-        if not fecha_desde or not fecha_hasta:
-            messagebox.showwarning("Datos Incompletos", "Por favor, ingrese ambas fechas.")
-            return
-        for row in self.tree_ventas_subrubro.get_children(): self.tree_ventas_subrubro.delete(row)
-        subrubros = ventas_db.reporte_ventas_por_subrubro(fecha_desde, fecha_hasta)
-        for subrubro in subrubros:
-            valores = (subrubro[0], subrubro[1], f"{subrubro[2]:.2f}", f"$ {subrubro[3]:.2f}")
-            self.tree_ventas_subrubro.insert("", "end", values=valores)
 
     def crear_widgets_cc_clientes(self):
         frame = self.cc_clientes_tab

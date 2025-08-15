@@ -180,6 +180,7 @@ def obtener_compras_impagas(proveedor_id):
 def registrar_pago_a_proveedor(caja_id, proveedor_id, compra_ids, pagos, nro_comprobante, detalle):
     """
     Registra un pago a un proveedor con múltiples medios de pago.
+    AHORA TAMBIÉN GUARDA EL ID DE LA COMPRA EN EL MOVIMIENTO DE CAJA.
     """
     conn = _crear_conexion()
     if conn is None: return "Error de conexión."
@@ -200,22 +201,26 @@ def registrar_pago_a_proveedor(caja_id, proveedor_id, compra_ids, pagos, nro_com
 
         query_cc = """
             INSERT INTO CuentasCorrientesProveedores 
-            (proveedor_id, fecha, tipo_movimiento, monto, saldo_resultante)
-            VALUES (?, date('now'), 'PAGO', ?, ?)
+            (proveedor_id, fecha, tipo_movimiento, monto, saldo_resultante, compra_id)
+            VALUES (?, date('now'), 'PAGO', ?, ?, ?)
         """
-        cursor.execute(query_cc, (proveedor_id, -monto_total_pagado, nuevo_saldo))
+        # Se asocia el primer ID de compra a la cuenta corriente
+        cursor.execute(query_cc, (proveedor_id, -monto_total_pagado, nuevo_saldo, compra_ids[0] if compra_ids else None))
 
         for compra_id in compra_ids:
             cursor.execute("UPDATE Compras SET estado = 'PAGADA' WHERE id = ?", (compra_id,))
         
+        # Se asocia el primer ID de compra al movimiento de caja para futuras referencias de anulación
+        compra_id_referencia = compra_ids[0] if compra_ids else None
+        
         for pago in pagos:
             query_mov_caja = """
-                INSERT INTO MovimientosCaja (caja_id, fecha, tipo, concepto, monto, medio_pago_id)
-                VALUES (?, ?, 'EGRESO', ?, ?, ?)
+                INSERT INTO MovimientosCaja (caja_id, fecha, tipo, concepto, monto, medio_pago_id, proveedor_id, compra_id)
+                VALUES (?, ?, 'EGRESO', ?, ?, ?, ?, ?)
             """
             concepto = f"Pago a Proveedor - Comp: {nro_comprobante} - Det: {detalle}"
             cursor.execute(query_mov_caja, (
-                caja_id, datetime.now(), concepto, pago['monto'], pago['medio_pago_id']
+                caja_id, datetime.now(), concepto, pago['monto'], pago['medio_pago_id'], proveedor_id, compra_id_referencia
             ))
 
         conn.commit()
