@@ -208,14 +208,15 @@ def agregar_articulo(datos):
 def obtener_articulos(criterio=None, incluir_inactivos=False):
     """
     Obtiene una lista de artículos, opcionalmente filtrada por un criterio
-    de búsqueda en código o nombre.
+    de búsqueda en código o nombre. AHORA TAMBIÉN DEVUELVE LA UNIDAD DE MEDIDA.
     """
     conn = _crear_conexion()
     if conn is None: return []
     try:
         cursor = conn.cursor()
+        # --- CAMBIO: Añadimos a.unidad_de_medida al final del SELECT ---
         query = """
-            SELECT a.id, a.codigo_barras, m.nombre, a.nombre, a.stock, a.precio_venta, a.estado
+            SELECT a.id, a.codigo_barras, m.nombre, a.nombre, a.stock, a.precio_venta, a.estado, a.unidad_de_medida
             FROM Articulos a
             LEFT JOIN Marcas m ON a.marca_id = m.id
         """
@@ -408,6 +409,208 @@ def obtener_articulos_stock_bajo():
     except sqlite3.Error as e:
         print(f"Error al obtener artículos con stock bajo: {e}")
         return []
+    finally:
+        if conn:
+            conn.close()
+
+# --- FUNCIONES DEL MÓDULO DE EMPAQUETADO ---
+
+def obtener_articulos_empaquetado():
+    conn = _crear_conexion()
+    if conn is None: return []
+    try:
+        cursor = conn.cursor()
+        query = """
+            SELECT a.id, a.codigo_barras, m.nombre, a.nombre, a.stock, a.precio_venta, a.estado
+            FROM Articulos a
+            LEFT JOIN Marcas m ON a.marca_id = m.id
+            JOIN Subrubros sr ON a.subrubro_id = sr.id
+            JOIN Rubros r ON sr.rubro_id = r.id
+            WHERE r.nombre = 'EMPAQUETADO PROPIO' AND a.estado = 'Activo'
+            ORDER BY a.nombre
+        """
+        cursor.execute(query)
+        return cursor.fetchall()
+    except sqlite3.Error as e:
+        print(f"Error al obtener artículos de empaquetado: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+def obtener_articulos_para_empaquetar(criterio=None):
+    conn = _crear_conexion()
+    if conn is None: return []
+    try:
+        cursor = conn.cursor()
+        query = """
+            SELECT a.id, a.nombre, m.nombre
+            FROM Articulos a
+            LEFT JOIN Marcas m ON a.marca_id = m.id
+            LEFT JOIN Subrubros sr ON a.subrubro_id = sr.id
+            LEFT JOIN Rubros r ON sr.rubro_id = r.id
+            WHERE a.estado = 'Activo' AND (r.nombre IS NULL OR r.nombre != 'EMPAQUETADO PROPIO')
+        """
+        params = []
+        if criterio:
+            query += " AND a.nombre LIKE ?"
+            params.append(f'%{criterio}%')
+        query += " ORDER BY a.nombre"
+        cursor.execute(query, params)
+        resultados = []
+        for row in cursor.fetchall():
+            resultados.append((row[0], f"{row[2]} - {row[1]}"))
+        return resultados
+    except sqlite3.Error as e:
+        print(f"Error al obtener artículos para empaquetar: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+def obtener_articulos_granel():
+    conn = _crear_conexion()
+    if conn is None: return []
+    try:
+        cursor = conn.cursor()
+        query = """
+            SELECT a.id, a.nombre, m.nombre
+            FROM Articulos a
+            LEFT JOIN Marcas m ON a.marca_id = m.id
+            JOIN Subrubros sr ON a.subrubro_id = sr.id
+            JOIN Rubros r ON sr.rubro_id = r.id
+            WHERE r.nombre = 'GRANEL' AND a.estado = 'Activo'
+            ORDER BY a.nombre
+        """
+        cursor.execute(query)
+        return [(row[0], f"{row[2]} - {row[1]}") for row in cursor.fetchall()]
+    except sqlite3.Error as e:
+        print(f"Error al obtener artículos del rubro Granel: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+def agregar_articulo_compuesto(datos_articulo, componentes):
+    conn = _crear_conexion()
+    if conn is None: return "Error de conexión."
+    try:
+        cursor = conn.cursor()
+        cursor.execute("BEGIN TRANSACTION")
+        columnas = ', '.join(datos_articulo.keys())
+        placeholders = ', '.join(['?'] * len(datos_articulo))
+        valores = tuple(datos_articulo.values())
+        query = f"INSERT INTO Articulos ({columnas}) VALUES ({placeholders})"
+        cursor.execute(query, valores)
+        articulo_final_id = cursor.lastrowid
+        if not componentes:
+            raise ValueError("El artículo debe tener al menos un componente.")
+        for id_componente, cantidad in componentes:
+            query_comp = "INSERT INTO ComposicionArticulos (articulo_final_id, articulo_componente_id, cantidad_componente) VALUES (?, ?, ?)"
+            cursor.execute(query_comp, (articulo_final_id, id_componente, cantidad))
+        conn.commit()
+        return "Artículo de empaquetado creado correctamente."
+    except Exception as e:
+        conn.rollback()
+        return f"Error al crear el artículo compuesto: {e}"
+    finally:
+        if conn:
+            conn.close()
+
+def obtener_composicion_articulo(articulo_id):
+    conn = _crear_conexion()
+    if conn is None: return []
+    try:
+        cursor = conn.cursor()
+        query = """
+            SELECT 
+                c.articulo_componente_id,
+                a.nombre,
+                m.nombre,
+                c.cantidad_componente
+            FROM ComposicionArticulos c
+            JOIN Articulos a ON c.articulo_componente_id = a.id
+            LEFT JOIN Marcas m ON a.marca_id = m.id
+            WHERE c.articulo_final_id = ?
+        """
+        cursor.execute(query, (articulo_id,))
+        return [(row[0], f"{row[2]} - {row[1]}", row[3]) for row in cursor.fetchall()]
+    except sqlite3.Error as e:
+        print(f"Error al obtener la composición: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+def modificar_articulo_compuesto(articulo_id, datos_articulo, componentes):
+    conn = _crear_conexion()
+    if conn is None: return "Error de conexión."
+    try:
+        cursor = conn.cursor()
+        cursor.execute("BEGIN TRANSACTION")
+        set_clause = ', '.join([f"{col} = ?" for col in datos_articulo.keys()])
+        valores = tuple(datos_articulo.values()) + (articulo_id,)
+        query_update = f"UPDATE Articulos SET {set_clause} WHERE id = ?"
+        cursor.execute(query_update, valores)
+        cursor.execute("DELETE FROM ComposicionArticulos WHERE articulo_final_id = ?", (articulo_id,))
+        if not componentes:
+            raise ValueError("El artículo debe tener al menos un componente.")
+        for id_componente, cantidad in componentes:
+            query_comp = "INSERT INTO ComposicionArticulos (articulo_final_id, articulo_componente_id, cantidad_componente) VALUES (?, ?, ?)"
+            cursor.execute(query_comp, (articulo_id, id_componente, cantidad))
+        conn.commit()
+        return "Artículo de empaquetado modificado correctamente."
+    except Exception as e:
+        conn.rollback()
+        return f"Error al modificar el artículo compuesto: {e}"
+    finally:
+        if conn:
+            conn.close()
+
+def obtener_subrubros_empaquetado():
+    conn = _crear_conexion()
+    if conn is None: return []
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM Rubros WHERE nombre = 'EMPAQUETADO PROPIO'")
+        rubro = cursor.fetchone()
+        if not rubro:
+            return []
+        rubro_id = rubro[0]
+        cursor.execute("SELECT id, nombre FROM Subrubros WHERE rubro_id = ? ORDER BY nombre", (rubro_id,))
+        return cursor.fetchall()
+    except sqlite3.Error as e:
+        print(f"Error al obtener subrubros de empaquetado: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+def realizar_produccion_empaquetado(articulo_final_id, cantidad_a_producir):
+    conn = _crear_conexion()
+    if conn is None: return "Error de conexión."
+    try:
+        cursor = conn.cursor()
+        cursor.execute("BEGIN TRANSACTION")
+        componentes = obtener_composicion_articulo(articulo_final_id)
+        if not componentes:
+            raise ValueError("El producto no tiene componentes definidos en su receta.")
+        for comp_id, _, cantidad_necesaria_por_unidad in componentes:
+            stock_requerido = cantidad_necesaria_por_unidad * cantidad_a_producir
+            cursor.execute("SELECT nombre, stock FROM Articulos WHERE id = ?", (comp_id,))
+            componente_info = cursor.fetchone()
+            stock_actual_componente = componente_info[1]
+            if stock_actual_componente < stock_requerido:
+                raise ValueError(f"Stock insuficiente para '{componente_info[0]}'. Se necesitan {stock_requerido} y hay {stock_actual_componente}.")
+        for comp_id, _, cantidad_necesaria_por_unidad in componentes:
+            stock_a_descontar = cantidad_necesaria_por_unidad * cantidad_a_producir
+            cursor.execute("UPDATE Articulos SET stock = stock - ? WHERE id = ?", (stock_a_descontar, comp_id))
+        cursor.execute("UPDATE Articulos SET stock = stock + ? WHERE id = ?", (cantidad_a_producir, articulo_final_id))
+        conn.commit()
+        return f"Producción de {cantidad_a_producir} unidades completada exitosamente."
+    except Exception as e:
+        conn.rollback()
+        return f"Error durante la producción: {e}"
     finally:
         if conn:
             conn.close()

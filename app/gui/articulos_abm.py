@@ -378,7 +378,8 @@ class ArticulosFrame(ttk.Frame):
         self.tree.column("codigo", width=150)
         self.tree.column("marca", width=120)
         self.tree.column("nombre", width=300)
-        self.tree.column("stock", width=80, anchor='center')
+        # --- CAMBIO: Aumentamos el ancho de la columna de stock ---
+        self.tree.column("stock", width=100, anchor='center')
         self.tree.column("precio_venta", width=100, anchor='e')
         self.tree.column("estado", width=80, anchor='center')
         
@@ -417,7 +418,19 @@ class ArticulosFrame(ttk.Frame):
         articulos = articulos_db.obtener_articulos(criterio=criterio, incluir_inactivos=ver_inactivos)
         
         for articulo in articulos:
-            self.tree.insert("", "end", values=articulo)
+            # --- CAMBIO: Unimos el stock con la unidad de medida ---
+            
+            # Desempaquetamos la tupla que viene de la base de datos
+            id_art, codigo, marca, nombre, stock, precio, estado, unidad = articulo
+            
+            # Creamos el texto formateado para el stock
+            unidad_str = unidad if unidad else "Un." # Si no tiene unidad, asumimos "Un."
+            stock_formateado = f"{stock} {unidad_str}"
+            
+            # Creamos una nueva tupla con el valor de stock formateado para mostrar en la tabla
+            valores_para_mostrar = (id_art, codigo, marca, nombre, stock_formateado, precio, estado)
+            
+            self.tree.insert("", "end", values=valores_para_mostrar)
         
         self.actualizar_botones_estado()
 
@@ -480,5 +493,8 @@ class ArticulosFrame(ttk.Frame):
             messagebox.showwarning("Sin Selección", "Seleccione un artículo para realizar un ajuste de stock.")
             return
         
+        # IMPORTANTE: La lógica aquí no se ve afectada porque la ventana de ajuste
+        # usa el ID del artículo para obtener el stock real desde la base de datos,
+        # no el valor que se muestra en la tabla.
         articulo_seleccionado = self.tree.item(selected_item, "values")
         VentanaAjusteStock(self, articulo_seleccionado)
