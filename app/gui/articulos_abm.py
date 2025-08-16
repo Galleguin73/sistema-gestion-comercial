@@ -17,13 +17,11 @@ class VentanaAjusteStock(tk.Toplevel):
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(1, weight=1)
 
-        # Info del artículo (no editable)
         ttk.Label(frame, text="Artículo:", font=("Helvetica", 10, "bold")).grid(row=0, column=0, sticky="w", padx=5, pady=2)
         ttk.Label(frame, text=f"{self.articulo[3]} ({self.articulo[2]})").grid(row=0, column=1, sticky="w", padx=5, pady=2)
         ttk.Label(frame, text="Stock Actual:", font=("Helvetica", 10, "bold")).grid(row=1, column=0, sticky="w", padx=5, pady=2)
         ttk.Label(frame, text=f"{self.articulo[4]}").grid(row=1, column=1, sticky="w", padx=5, pady=2)
 
-        # Formulario de ajuste
         ttk.Label(frame, text="Tipo de Ajuste:").grid(row=2, column=0, sticky="w", padx=5, pady=10)
         self.tipo_ajuste_combo = ttk.Combobox(frame, values=["Ingreso Extraordinario", "Egreso por Vencimiento"], state="readonly")
         self.tipo_ajuste_combo.grid(row=2, column=1, sticky="ew", padx=5, pady=10)
@@ -126,7 +124,7 @@ class VentanaArticulo(tk.Toplevel):
         
         self.entries = {}
         row_num = 0
-
+        
         ttk.Label(self.frame, text="Nombre/Producto:").grid(row=row_num, column=0, columnspan=1, padx=5, pady=5, sticky="w")
         self.entries['nombre'] = ttk.Entry(self.frame)
         self.entries['nombre'].grid(row=row_num, column=1, columnspan=3, padx=5, pady=5, sticky="ew")
@@ -351,10 +349,16 @@ class ArticulosFrame(ttk.Frame):
         filtros_frame = ttk.Frame(self, style="Content.TFrame")
         filtros_frame.grid(row=0, column=0, padx=10, pady=(10,0), sticky="ew")
         
+        ttk.Label(filtros_frame, text="Buscar:").pack(side="left", padx=(0,5))
+        self.search_var = tk.StringVar()
+        self.search_var.trace_add("write", lambda name, index, mode: self.actualizar_lista())
+        search_entry = ttk.Entry(filtros_frame, textvariable=self.search_var, width=40)
+        search_entry.pack(side="left", fill="x", expand=True)
+
         self.ver_inactivos_var = tk.BooleanVar()
-        self.check_inactivos = ttk.Checkbutton(filtros_frame, text="Ver artículos inactivos", 
+        self.check_inactivos = ttk.Checkbutton(filtros_frame, text="Ver inactivos", 
                                                variable=self.ver_inactivos_var, command=self.actualizar_lista)
-        self.check_inactivos.pack(side='left')
+        self.check_inactivos.pack(side="left", padx=10)
         
         self.tree_frame = ttk.Frame(self, style="Content.TFrame")
         self.tree_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
@@ -408,7 +412,9 @@ class ArticulosFrame(ttk.Frame):
             self.tree.delete(row)
             
         ver_inactivos = self.ver_inactivos_var.get()
-        articulos = articulos_db.obtener_articulos(incluir_inactivos=ver_inactivos)
+        criterio = self.search_var.get()
+        
+        articulos = articulos_db.obtener_articulos(criterio=criterio, incluir_inactivos=ver_inactivos)
         
         for articulo in articulos:
             self.tree.insert("", "end", values=articulo)

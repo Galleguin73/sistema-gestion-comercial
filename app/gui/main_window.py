@@ -12,6 +12,7 @@ from .caja import CajaFrame
 from .pos_frame import POSFrame
 from .reportes_frame import ReportesFrame
 from .dashboard_frame import DashboardFrame
+from .cuentas_corrientes_frame import CuentasCorrientesFrame
 
 class MainWindow(ThemedTk):
     def __init__(self, usuario_logueado):
@@ -79,10 +80,15 @@ class MainWindow(ThemedTk):
         app_title.pack(pady=20, padx=10, fill='x')
 
         modulos = {
-            "Inicio": self.mostrar_dashboard, "Caja": self.mostrar_frame_caja,
-            "POS / Venta": self.mostrar_frame_pos, "Artículos": self.mostrar_frame_articulos,
-            "Clientes": self.mostrar_frame_clientes, "Proveedores": self.mostrar_frame_proveedores,
-            "Compras": self.mostrar_frame_compras, "Reportes": self.mostrar_frame_reportes,
+            "Inicio": self.mostrar_dashboard,
+            "Caja": self.mostrar_frame_caja,
+            "POS / Venta": self.mostrar_frame_pos,
+            "Cuentas Corrientes": self.mostrar_frame_cuentas_corrientes, # <-- NUEVO
+            "Artículos": self.mostrar_frame_articulos,
+            "Clientes": self.mostrar_frame_clientes,
+            "Proveedores": self.mostrar_frame_proveedores,
+            "Compras": self.mostrar_frame_compras,
+            "Reportes": self.mostrar_frame_reportes,
             "Configuración": self.mostrar_frame_configuracion
         }
         
@@ -161,7 +167,7 @@ class MainWindow(ThemedTk):
         
     def mostrar_frame_configuracion(self):
         self.limpiar_content_frame()
-        config_frame = ConfiguracionFrame(self.content_frame, self.style)
+        config_frame = ConfiguracionFrame(self.content_frame, self.style, self)
         config_frame.pack(fill='both', expand=True, padx=10, pady=10)
 
     def mostrar_frame_compras(self):
@@ -190,3 +196,8 @@ class MainWindow(ThemedTk):
         
     def actualizar_estado_caja(self, caja_id):
         self.caja_actual_id = caja_id
+    
+    def mostrar_frame_cuentas_corrientes(self):
+        self.limpiar_content_frame()
+        ctas_ctes_frame = CuentasCorrientesFrame(self.content_frame, self.style)
+        ctas_ctes_frame.pack(fill='both', expand=True, padx=10, pady=10)

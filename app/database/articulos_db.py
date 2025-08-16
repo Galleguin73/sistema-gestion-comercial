@@ -1,6 +1,6 @@
+from datetime import datetime
 import sqlite3
 import os
-from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_DIR = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), 'database')
@@ -205,11 +205,10 @@ def agregar_articulo(datos):
         if conn:
             conn.close()
 
-def obtener_articulos(incluir_inactivos=False):
+def obtener_articulos(criterio=None, incluir_inactivos=False):
     """
-    Obtiene una lista de artículos para el Treeview principal.
-    Si incluir_inactivos es True, muestra todos los artículos.
-    Ahora también devuelve la columna 'estado'.
+    Obtiene una lista de artículos, opcionalmente filtrada por un criterio
+    de búsqueda en código o nombre.
     """
     conn = _crear_conexion()
     if conn is None: return []
@@ -220,12 +219,22 @@ def obtener_articulos(incluir_inactivos=False):
             FROM Articulos a
             LEFT JOIN Marcas m ON a.marca_id = m.id
         """
-        if not incluir_inactivos:
-            query += " WHERE a.estado = 'Activo'"
+        params = []
         
+        where_clauses = []
+        if not incluir_inactivos:
+            where_clauses.append("a.estado = 'Activo'")
+        
+        if criterio:
+            where_clauses.append("(a.codigo_barras LIKE ? OR a.nombre LIKE ?)")
+            params.extend([f'%{criterio}%', f'%{criterio}%'])
+        
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
+            
         query += " ORDER BY a.nombre"
         
-        cursor.execute(query)
+        cursor.execute(query, tuple(params))
         return cursor.fetchall()
     finally:
         if conn:
@@ -318,7 +327,6 @@ def buscar_articulos_pos(criterio):
             conn.close()
 
 def desactivar_articulo(articulo_id):
-    """Cambia el estado de un artículo a 'Inactivo'."""
     conn = _crear_conexion()
     if conn is None: return "Error de conexión."
     try:
@@ -333,7 +341,6 @@ def desactivar_articulo(articulo_id):
             conn.close()
 
 def reactivar_articulo(articulo_id):
-    """Cambia el estado de un artículo a 'Activo'."""
     conn = _crear_conexion()
     if conn is None: return "Error de conexión."
     try:
@@ -348,16 +355,11 @@ def reactivar_articulo(articulo_id):
             conn.close()
 
 def realizar_ajuste_stock(articulo_id, tipo_ajuste, cantidad, concepto):
-    """
-    Realiza un ajuste de stock y lo registra en la tabla de auditoría.
-    """
     conn = _crear_conexion()
     if conn is None: return "Error de conexión."
-    
     try:
         cursor = conn.cursor()
         cursor.execute("BEGIN TRANSACTION")
-
         cursor.execute("SELECT stock FROM Articulos WHERE id = ?", (articulo_id,))
         stock_anterior = cursor.fetchone()[0]
 
@@ -381,7 +383,6 @@ def realizar_ajuste_stock(articulo_id, tipo_ajuste, cantidad, concepto):
         cursor.execute(query_log, (
             articulo_id, datetime.now(), tipo_ajuste, cantidad, concepto, stock_anterior, stock_nuevo
         ))
-
         conn.commit()
         return "Ajuste de stock realizado exitosamente."
     except Exception as e:
@@ -392,10 +393,6 @@ def realizar_ajuste_stock(articulo_id, tipo_ajuste, cantidad, concepto):
             conn.close()
 
 def obtener_articulos_stock_bajo():
-    """
-    Devuelve una lista de artículos cuyo stock actual es menor o igual
-    a su stock mínimo definido.
-    """
     conn = _crear_conexion()
     if conn is None: return []
     try:
@@ -403,7 +400,7 @@ def obtener_articulos_stock_bajo():
         query = """
             SELECT nombre, stock, stock_minimo
             FROM Articulos
-            WHERE estado = 'Activo' AND stock <= stock_minimo AND stock_minimo > 0
+            WHERE estado = 'Activo' AND stock_minimo > 0 AND stock <= stock_minimo
             ORDER BY nombre
         """
         cursor.execute(query)

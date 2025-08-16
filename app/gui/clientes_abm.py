@@ -144,14 +144,20 @@ class ClientesFrame(ttk.Frame):
         super().__init__(parent, style="Content.TFrame")
         self.style = style
 
-        self.style.configure("Action.TButton", font=("Helvetica", 10, "bold"))
-        self.style.configure("Treeview.Heading", font=("Helvetica", 10, "bold"))
-
-        self.grid_rowconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
+        filtros_frame = ttk.Frame(self, style="Content.TFrame")
+        filtros_frame.grid(row=0, column=0, padx=10, pady=(10,0), sticky="ew")
+        
+        ttk.Label(filtros_frame, text="Buscar Cliente:").pack(side="left", padx=(0,5))
+        self.search_var = tk.StringVar()
+        self.search_var.trace_add("write", lambda name, index, mode: self.actualizar_lista())
+        search_entry = ttk.Entry(filtros_frame, textvariable=self.search_var, width=40)
+        search_entry.pack(side="left", fill="x", expand=True)
+
         self.tree_frame = ttk.Frame(self, style="Content.TFrame")
-        self.tree_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        self.tree_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
         self.tree_frame.grid_rowconfigure(0, weight=1)
         self.tree_frame.grid_columnconfigure(0, weight=1)
 
@@ -180,7 +186,7 @@ class ClientesFrame(ttk.Frame):
         self.tree.configure(yscrollcommand=scrollbar.set)
         
         self.button_frame = ttk.Frame(self, style="Content.TFrame")
-        self.button_frame.grid(row=0, column=1, padx=10, pady=10, sticky="ns")
+        self.button_frame.grid(row=1, column=1, padx=10, pady=10, sticky="ns")
 
         self.add_btn = ttk.Button(self.button_frame, text="Agregar Nuevo", command=self.abrir_ventana_creacion, style="Action.TButton")
         self.add_btn.pack(pady=5, fill='x')
@@ -199,7 +205,9 @@ class ClientesFrame(ttk.Frame):
     def actualizar_lista(self):
         for row in self.tree.get_children():
             self.tree.delete(row)
-        clientes = clientes_db.obtener_clientes()
+        
+        criterio = self.search_var.get()
+        clientes = clientes_db.obtener_clientes(criterio=criterio)
         for cliente in clientes:
             self.tree.insert("", "end", values=cliente)
 
@@ -240,7 +248,6 @@ class ClientesFrame(ttk.Frame):
         historial_window.transient(self)
         historial_window.grab_set()
         
-        # Frame para los filtros de fecha
         filtros_frame = ttk.Frame(historial_window, padding="10")
         filtros_frame.pack(fill="x")
         ttk.Label(filtros_frame, text="Desde:").pack(side="left", padx=(0,5))
@@ -250,12 +257,10 @@ class ClientesFrame(ttk.Frame):
         fecha_hasta_entry = DateEntry(filtros_frame, date_pattern='yyyy-mm-dd', width=12)
         fecha_hasta_entry.pack(side="left", padx=5)
 
-        # Frame para la tabla
         tree_frame = ttk.Frame(historial_window)
         tree_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
         columnas = ("id", "fecha", "nro", "total", "estado")
-        # Usamos displaycolumns para ocultar la columna 'id' visualmente
         tree_historial = ttk.Treeview(tree_frame, columns=columnas, show="headings", displaycolumns=("fecha", "nro", "total", "estado"))
         tree_historial.heading("fecha", text="Fecha")
         tree_historial.heading("nro", text="Comprobante")
@@ -264,7 +269,6 @@ class ClientesFrame(ttk.Frame):
         tree_historial.column("total", anchor="e")
         tree_historial.pack(side="left", fill="both", expand=True)
 
-        # Barra de Scroll
         scrollbar_historial = ttk.Scrollbar(tree_frame, orient="vertical", command=tree_historial.yview)
         scrollbar_historial.pack(side='right', fill='y')
         tree_historial.configure(yscrollcommand=scrollbar_historial.set)
@@ -279,13 +283,11 @@ class ClientesFrame(ttk.Frame):
             ventas = ventas_db.obtener_ventas_por_cliente(cliente_id, desde, hasta)
             for venta in ventas:
                 id_venta, fecha, nro_comp, monto_total, estado = venta
-                # Formateamos el monto antes de insertarlo
                 valores_formateados = (id_venta, fecha, nro_comp, f"$ {monto_total:.2f}", estado)
                 tree_historial.insert("", "end", values=valores_formateados)
         
         ttk.Button(filtros_frame, text="Filtrar", command=cargar_historial).pack(side="left", padx=10)
         
-        # Cargar todos los datos inicialmente
         fecha_desde_entry.set_date(None)
         fecha_hasta_entry.set_date(None)
         cargar_historial()
