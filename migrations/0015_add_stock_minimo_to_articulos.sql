@@ -1,2 +1,0 @@
-ALTER TABLE Articulos
-ADD COLUMN stock_minimo REAL NOT NULL DEFAULT 0.0;

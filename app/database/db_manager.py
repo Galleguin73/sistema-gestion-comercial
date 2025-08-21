@@ -1,11 +1,10 @@
 import sqlite3
 import os
 
-# --- Definición de Rutas ---
-# Obtenemos la ruta raíz del proyecto para acceder a las carpetas 'database' y 'migrations'
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(BASE_DIR, 'database', 'gestion.db')
-MIGRATIONS_DIR = os.path.join(BASE_DIR, 'migrations')
+BASE_APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
+ROOT_DIR = os.path.dirname(BASE_APP_DIR) 
+DB_PATH = os.path.join(ROOT_DIR, 'database', 'gestion.db')
+MIGRATIONS_DIR = os.path.join(ROOT_DIR, 'migrations')
 
 def _crear_conexion():
     """Crea y devuelve una conexión a la base de datos."""
@@ -31,7 +30,6 @@ def _obtener_migraciones_ejecutadas(cursor):
         cursor.execute("SELECT nombre_archivo FROM _migrations")
         return {row[0] for row in cursor.fetchall()}
     except sqlite3.OperationalError:
-        # Si la tabla aún no existe, devuelve un conjunto vacío
         return set()
 
 def aplicar_migraciones():
@@ -61,14 +59,13 @@ def aplicar_migraciones():
                         sql_script = f.read()
                         cursor.executescript(sql_script)
                     
-                    # Registra la migración como ejecutada
                     cursor.execute("INSERT INTO _migrations (nombre_archivo) VALUES (?)", (archivo,))
                     conn.commit()
                     print(f"Migración {archivo} completada.")
                 except sqlite3.Error as e:
                     print(f"Error durante la migración {archivo}: {e}")
-                    conn.rollback() # Revierte los cambios de esta migración si falla
-                    break # Detiene el proceso si una migración falla
+                    conn.rollback()
+                    break 
     except Exception as e:
         print(f"Ocurrió un error inesperado durante el proceso de migración: {e}")
     finally:

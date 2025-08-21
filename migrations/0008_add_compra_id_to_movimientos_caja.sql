@@ -1,2 +1,0 @@
-ALTER TABLE MovimientosCaja
-ADD COLUMN compra_id INTEGER REFERENCES Compras(id) ON DELETE SET NULL;

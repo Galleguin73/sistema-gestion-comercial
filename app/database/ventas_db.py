@@ -15,46 +15,61 @@ def _crear_conexion():
         return None
 
 # --- FUNCIÓN MODIFICADA PARA ACEPTAR DESCUENTOS ---
-def registrar_venta(datos_venta, items_carrito, pagos):
+def registrar_venta(datos_venta, carrito_items, pagos):
     conn = _crear_conexion()
     if conn is None: return "Error de conexión."
     try:
         cursor = conn.cursor()
         cursor.execute("BEGIN TRANSACTION")
-
-        query_venta = "INSERT INTO Ventas (cliente_id, caja_id, fecha_venta, monto_total, tipo_comprobante, descuento_total) VALUES (?, ?, ?, ?, ?, ?)"
+        
+        # --- CORRECCIÓN: Usamos 'fecha_venta' y las otras columnas que ya existen ---
+        query_venta = """
+            INSERT INTO Ventas (fecha_venta, cliente_id, cliente_nombre, tipo_comprobante, monto_total, estado, caja_id, descuento_total)
+            VALUES (?, ?, ?, ?, ?, 'FINALIZADA', ?, ?)
+        """
         cursor.execute(query_venta, (
-            datos_venta['cliente_id'], datos_venta['caja_id'], datetime.now(), 
-            datos_venta['total'], datos_venta['tipo_comprobante'], datos_venta.get('descuento_total', 0.0)
+            datetime.now(), 
+            datos_venta.get('cliente_id'), 
+            datos_venta.get('cliente_nombre'), 
+            datos_venta.get('tipo_comprobante'), 
+            datos_venta.get('total'), # La columna en la DB se llama monto_total
+            datos_venta.get('caja_id'), 
+            datos_venta.get('descuento_total')
         ))
         venta_id = cursor.lastrowid
 
-        numero_comprobante = str(venta_id).zfill(8)
-        cursor.execute("UPDATE Ventas SET numero_comprobante = ? WHERE id = ?", (numero_comprobante, venta_id))
+        # Aseguramos que la tabla VentasDetalle exista antes de insertar
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS VentasDetalle (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, venta_id INTEGER, articulo_id INTEGER, 
+                descripcion TEXT, cantidad REAL, precio_unitario REAL, descuento REAL, subtotal REAL
+            )
+        """)
 
-        for item_id, item_data in items_carrito.items():
-            cantidad = item_data['cantidad']
-            descuento_item = item_data.get('descuento', 0.0)
-            query_detalle = "INSERT INTO DetalleVenta (venta_id, articulo_id, cantidad, precio_unitario, descuento_monto) VALUES (?, ?, ?, ?, ?)"
-            cursor.execute(query_detalle, (venta_id, item_id, cantidad, item_data['precio_unit'], descuento_item))
-            query_stock = "UPDATE Articulos SET stock = stock - ? WHERE id = ?"
-            cursor.execute(query_stock, (cantidad, item_id))
-
+        query_detalle = "INSERT INTO VentasDetalle (venta_id, articulo_id, descripcion, cantidad, precio_unitario, subtotal, descuento) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        for item_id, data in carrito_items.items():
+            subtotal = (data['cantidad'] * data['precio_unit']) - data.get('descuento', 0.0)
+            cursor.execute(query_detalle, (
+                venta_id, item_id, data['descripcion'], data['cantidad'], 
+                data['precio_unit'], subtotal, data.get('descuento', 0.0)
+            ))
+            cursor.execute("UPDATE Articulos SET stock = stock - ? WHERE id = ?", (data['cantidad'], item_id))
+        
         for pago in pagos:
-            query_pago = "INSERT INTO VentasPagos (venta_id, medio_pago_id, monto) VALUES (?, ?, ?)"
-            cursor.execute(query_pago, (venta_id, pago['medio_pago_id'], pago['monto']))
-            query_mov_caja = "INSERT INTO MovimientosCaja (caja_id, venta_id, fecha, tipo, concepto, monto, medio_pago_id) VALUES (?, ?, ?, 'INGRESO', ?, ?, ?)"
-            concepto = f"Venta - Comprobante N°{numero_comprobante}"
-            cursor.execute(query_mov_caja, (datos_venta['caja_id'], venta_id, datetime.now(), concepto, pago['monto'], pago['medio_pago_id']))
+            concepto = f"Venta - Comprobante ID: {venta_id}"
+            query_caja = "INSERT INTO MovimientosCaja (caja_id, fecha, tipo, concepto, monto, medio_pago_id, venta_id) VALUES (?, ?, 'INGRESO', ?, ?, ?, ?)"
+            cursor.execute(query_caja, (datos_venta['caja_id'], datetime.now(), concepto, pago['monto'], pago['medio_pago_id'], venta_id))
 
         conn.commit()
-        return venta_id # <--- CAMBIO IMPORTANTE: Devolvemos el ID
+        return venta_id
     except sqlite3.Error as e:
         conn.rollback()
-        return f"Error de base de datos: {e}"
+        # Modificamos el nombre de la columna en el INSERT principal
+        if 'no column named total' in str(e):
+             return "Error al registrar la venta: La tabla 'Ventas' no tiene una columna llamada 'total'. Debería llamarse 'monto_total'."
+        return f"Error al registrar la venta: {e}"
     finally:
-        if conn:
-            conn.close()
+        if conn: conn.close()
 
 # --- FUNCIONES ORIGINALES (SIN CAMBIOS) ---
 def obtener_ventas_por_periodo(fecha_desde, fecha_hasta):
@@ -475,3 +490,80 @@ def obtener_ventas_por_cliente(cliente_id, fecha_desde=None, fecha_hasta=None):
     finally:
         if conn:
             conn.close()
+
+def obtener_venta_por_id(venta_id):
+    """Obtiene los datos del encabezado de una venta."""
+    conn = _crear_conexion()
+    if not conn: return None
+    try:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        query = "SELECT * FROM Ventas WHERE id = ?"
+        cursor.execute(query, (venta_id,))
+        return dict(cursor.fetchone())
+    finally:
+        if conn: conn.close()
+
+def obtener_detalle_venta(venta_id):
+    """Obtiene los items del detalle de una venta."""
+    conn = _crear_conexion()
+    if not conn: return []
+    try:
+        cursor = conn.cursor()
+        query = "SELECT cantidad, descripcion, precio_unitario, subtotal FROM VentasDetalle WHERE venta_id = ?"
+        cursor.execute(query, (venta_id,))
+        return cursor.fetchall()
+    finally:
+        if conn: conn.close()
+
+def obtener_venta_completa_por_id(venta_id):
+    conn = _crear_conexion()
+    if not conn: return None
+    try:
+        conn.row_factory = sqlite3.Row; cursor = conn.cursor()
+        # --- CORRECCIÓN: Usamos v.* para obtener los nombres de columna reales ---
+        query = """
+            SELECT v.*, c.cuit_dni as cliente_cuit 
+            FROM Ventas v 
+            LEFT JOIN Clientes c ON v.cliente_id = c.id 
+            WHERE v.id = ?
+        """
+        cursor.execute(query, (venta_id,))
+        venta = cursor.fetchone()
+        return dict(venta) if venta else None
+    finally:
+        if conn: conn.close()
+
+def obtener_detalle_venta_completo(venta_id):
+    conn = _crear_conexion()
+    if not conn: return []
+    try:
+        cursor = conn.cursor()
+        query = """
+            SELECT vd.descripcion, vd.cantidad, vd.precio_unitario, vd.subtotal, m.nombre as marca_nombre
+            FROM VentasDetalle vd
+            JOIN Articulos a ON vd.articulo_id = a.id
+            LEFT JOIN Marcas m ON a.marca_id = m.id
+            WHERE vd.venta_id = ?
+        """
+        cursor.execute(query, (venta_id,))
+        return cursor.fetchall()
+    finally:
+        if conn: conn.close()
+        
+def obtener_ventas_por_periodo(fecha_desde, fecha_hasta):
+    conn = _crear_conexion()
+    if conn is None: return []
+    try:
+        cursor = conn.cursor()
+        query = """
+            SELECT v.id, v.fecha_venta, c.razon_social, v.tipo_comprobante, v.monto_total, v.estado
+            FROM Ventas v
+            LEFT JOIN Clientes c ON v.cliente_id = c.id
+            WHERE DATE(v.fecha_venta) BETWEEN ? AND ?
+            ORDER BY v.fecha_venta DESC
+        """
+        cursor.execute(query, (fecha_desde, fecha_hasta))
+        return cursor.fetchall()
+    finally:
+        if conn: conn.close()

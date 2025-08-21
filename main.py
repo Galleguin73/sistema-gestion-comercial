@@ -1,11 +1,9 @@
-# En main.py
-
 from app.database import db_manager
 from app.gui.login_window import LoginWindow
 from app.gui.main_window import MainWindow
 
 def main():
-    db_manager.aplicar_migraciones()
+    # db_manager.aplicar_migraciones()
     
     while True:
         # 1. Muestra la ventana de login y espera a que se cierre

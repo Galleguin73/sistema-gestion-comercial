@@ -13,7 +13,6 @@ from .caja import CajaFrame
 from .pos_frame import POSFrame
 from .reportes_frame import ReportesFrame
 from .dashboard_frame import DashboardFrame
-from .cuentas_corrientes_frame import CuentasCorrientesFrame
 
 class MainWindow(ThemedTk):
     def __init__(self, usuario_logueado):
@@ -27,9 +26,32 @@ class MainWindow(ThemedTk):
 
         self.title("Sistema de Gestión Comercial")
         self.state('zoomed') 
-        
         self.protocol("WM_DELETE_WINDOW", self.salir_aplicacion)
         
+        # --- CAMBIO: Se reemplaza el bloque de estilos por una sola llamada ---
+        self._configurar_estilos()
+
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=1)
+
+        self.nav_frame = ttk.Frame(self, width=220, style="Sidebar.TFrame")
+        self.nav_frame.grid(row=0, column=0, sticky="nsw")
+        self.nav_frame.pack_propagate(False)
+
+        self.content_frame = ttk.Frame(self, style="Content.TFrame")
+        self.content_frame.grid(row=0, column=1, sticky="nsew")
+
+        self.verificar_caja_al_inicio()
+        self.crear_botones_navegacion()
+        
+        inicio_btn = self.nav_buttons.get("Inicio")
+        if inicio_btn:
+             self.on_nav_button_click(inicio_btn, self.mostrar_dashboard)
+        else:
+             self.mostrar_dashboard()
+
+    def _configurar_estilos(self):
+        """Centraliza toda la configuración de estilos de la aplicación."""
         self.set_theme("clam")
         self.style = ttk.Style()
         
@@ -50,10 +72,8 @@ class MainWindow(ThemedTk):
                        background=[('active', self.COLOR_BTN_HOVER), ('!active', self.COLOR_BTN_NORMAL)], 
                        foreground=[('!disabled', self.COLOR_BTN_TEXT)])
         
-        # --- LÍNEA MODIFICADA ---
         self.style.configure("Nav.TButton", font=("Helvetica", 10, "bold"), padding=(10, 6), borderwidth=0, relief="flat", anchor="w")
 
-        # --- LÍNEA MODIFICADA ---
         self.style.configure("ActiveNav.TButton", font=("Helvetica", 10, "bold"), padding=(10, 6), borderwidth=0, relief="flat", anchor="w",
                              background=self.COLOR_BTN_ACTIVE, foreground=self.COLOR_BTN_TEXT)
 
@@ -64,25 +84,9 @@ class MainWindow(ThemedTk):
         self.style.configure("Treeview", background="white", fieldbackground="white", foreground=self.COLOR_TEXT_DARK)
         self.style.configure("Treeview.Heading", font=("Helvetica", 10, "bold"))
         self.style.map('Treeview', background=[('selected', self.COLOR_BTN_NORMAL)], foreground=[('selected', self.COLOR_BTN_TEXT)])
-        
-        self.grid_rowconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=1)
-
-        self.nav_frame = ttk.Frame(self, width=220, style="Sidebar.TFrame")
-        self.nav_frame.grid(row=0, column=0, sticky="nsw")
-        self.nav_frame.pack_propagate(False)
-
-        self.content_frame = ttk.Frame(self, style="Content.TFrame")
-        self.content_frame.grid(row=0, column=1, sticky="nsew")
-
-        self.verificar_caja_al_inicio()
-        self.crear_botones_navegacion()
-        
-        inicio_btn = self.nav_buttons.get("Inicio")
-        if inicio_btn:
-             self.on_nav_button_click(inicio_btn, self.mostrar_dashboard)
-        else:
-             self.mostrar_dashboard()
+        self.style.configure("Large.Treeview", rowheight=35, font=("Helvetica", 12))
+        self.style.configure("Large.Treeview.Heading", font=("Helvetica", 14, "bold"))
+        self.style.configure("Small.Treeview.Heading", font=("Helvetica", 9, "bold"))
 
     def verificar_caja_al_inicio(self):
         caja_abierta = caja_db.obtener_estado_caja()
@@ -124,7 +128,6 @@ class MainWindow(ThemedTk):
             "Clientes": self.mostrar_frame_clientes,
             "Proveedores": self.mostrar_frame_proveedores,
             "Compras": self.mostrar_frame_compras,
-            "Cuentas Corrientes": self.mostrar_frame_cuentas_corrientes,
             "Reportes": self.mostrar_frame_reportes,
             "Configuración": self.mostrar_frame_configuracion
         }
@@ -192,7 +195,7 @@ class MainWindow(ThemedTk):
 
     def mostrar_frame_proveedores(self):
         self.limpiar_content_frame()
-        proveedores_frame = ProveedoresFrame(self.content_frame, self.style)
+        proveedores_frame = ProveedoresFrame(self.content_frame, self.style, self)
         proveedores_frame.pack(fill='both', expand=True, padx=10, pady=10)
 
     def mostrar_frame_articulos(self, oculto=False):
@@ -242,7 +245,3 @@ class MainWindow(ThemedTk):
     def actualizar_estado_caja(self, caja_id):
         self.caja_actual_id = caja_id
     
-    def mostrar_frame_cuentas_corrientes(self):
-        self.limpiar_content_frame()
-        ctas_ctes_frame = CuentasCorrientesFrame(self.content_frame, self.style)
-        ctas_ctes_frame.pack(fill='both', expand=True, padx=10, pady=10)

@@ -1,13 +1,12 @@
-# En app/gui/empaquetado_abm.py
-
 import tkinter as tk
 from tkinter import ttk, messagebox, TclError
-
 from app.database import articulos_db
+from .mixins.pricing_mixin import PricingLogicMixin
 
-class VentanaArticuloEmpaquetado(tk.Toplevel):
+class VentanaArticuloEmpaquetado(tk.Toplevel, PricingLogicMixin):
     def __init__(self, parent, articulo_id=None):
         super().__init__(parent)
+        PricingLogicMixin.__init__(self)
         self.parent = parent
         self.articulo_id = articulo_id
         
@@ -78,11 +77,9 @@ class VentanaArticuloEmpaquetado(tk.Toplevel):
         self.entries['precio_venta'] = self.venta_entry
         self.venta_entry.grid(row=row_num, column=3, padx=5, pady=5, sticky="ew")
         
-        self.costo_entry.bind("<KeyRelease>", self.calcular_desde_costo_utilidad)
-        self.iva_combo.bind("<<ComboboxSelected>>", self.calcular_desde_costo_utilidad)
-        self.utilidad_entry.bind("<KeyRelease>", self.calcular_desde_costo_utilidad)
-        self.venta_entry.bind("<KeyRelease>", self.calcular_desde_venta)
+        self.bind_pricing_events()
 
+        # --- INTERFAZ DE COMPONENTES RESTAURADA ---
         selector_frame = ttk.Frame(comp_frame)
         selector_frame.pack(fill='x', pady=5)
         selector_frame.columnconfigure(1, weight=1)
@@ -109,6 +106,7 @@ class VentanaArticuloEmpaquetado(tk.Toplevel):
         self.tree_componentes.heading("nombre", text="Componente")
         self.tree_componentes.heading("cantidad", text="Cantidad Usada")
         self.tree_componentes.pack(side="left", fill="both", expand=True)
+        # --- FIN DE LA SECCIÓN RESTAURADA ---
 
         btn_guardar = ttk.Button(main_frame, text="Guardar Cambios", command=self.guardar, style="Action.TButton")
         btn_guardar.pack(pady=10, fill='x', padx=5)
@@ -118,41 +116,6 @@ class VentanaArticuloEmpaquetado(tk.Toplevel):
         else:
             self.iva_combo.set("21")
 
-    def calcular_desde_costo_utilidad(self, event=None):
-        try:
-            costo_str = self.costo_entry.get().replace(',', '.') or "0"
-            iva_str = self.iva_combo.get() or "0"
-            util_str = self.utilidad_entry.get().replace(',', '.') or "0"
-            costo = float(costo_str)
-            iva_porc = float(iva_str)
-            util_porc = float(util_str)
-            costo_con_iva = costo * (1 + iva_porc / 100)
-            precio_venta = costo_con_iva * (1 + util_porc / 100)
-            self.venta_entry.unbind("<KeyRelease>")
-            self.venta_entry.delete(0, tk.END)
-            self.venta_entry.insert(0, f"{precio_venta:.2f}")
-            self.venta_entry.bind("<KeyRelease>", self.calcular_desde_venta)
-        except (ValueError, TclError):
-            pass
-
-    def calcular_desde_venta(self, event=None):
-        try:
-            costo_str = self.costo_entry.get().replace(',', '.') or "0"
-            iva_str = self.iva_combo.get() or "0"
-            venta_str = self.venta_entry.get().replace(',', '.') or "0"
-            costo = float(costo_str)
-            iva_porc = float(iva_str)
-            precio_venta = float(venta_str)
-            costo_con_iva = costo * (1 + iva_porc / 100)
-            if costo_con_iva > 0:
-                utilidad = ((precio_venta / costo_con_iva) - 1) * 100
-                self.utilidad_entry.unbind("<KeyRelease>")
-                self.utilidad_entry.delete(0, tk.END)
-                self.utilidad_entry.insert(0, f"{utilidad:.2f}")
-                self.utilidad_entry.bind("<KeyRelease>", self.calcular_desde_costo_utilidad)
-        except (ValueError, TclError):
-            pass
-            
     def cargar_marcas(self):
         self.marcas_data = articulos_db.obtener_marcas()
         self.combo_marca['values'] = [m[1] for m in self.marcas_data]
@@ -189,8 +152,13 @@ class VentanaArticuloEmpaquetado(tk.Toplevel):
         for clave, entry in self.entries.items():
             valor = articulo.get(clave)
             if valor is not None:
-                entry.delete(0, tk.END)
-                entry.insert(0, str(valor))
+                if isinstance(entry, ttk.Combobox):
+                    pass
+                else:
+                    entry.delete(0, tk.END)
+                    entry.insert(0, str(valor))
+        
+        self.entries['iva'].set(articulo.get('iva', '21'))
         
         marca_nombre = next((m[1] for m in self.marcas_data if m[0] == articulo.get('marca_id')), "")
         self.combo_marca.set(marca_nombre)
@@ -213,11 +181,9 @@ class VentanaArticuloEmpaquetado(tk.Toplevel):
             return
 
         marca_nombre = self.combo_marca.get()
-        marca_id = next((mid for mid, nombre in self.marcas_data if nombre == marca_nombre), None)
-        datos_principales['marca_id'] = marca_id
+        datos_principales['marca_id'] = next((mid for mid, nombre in self.marcas_data if nombre == marca_nombre), None)
         
-        subrubro_id = next((sid for sid, nombre in self.subrubros_data if nombre == subrubro_nombre), None)
-        datos_principales['subrubro_id'] = subrubro_id
+        datos_principales['subrubro_id'] = next((sid for sid, nombre in self.subrubros_data if nombre == subrubro_nombre), None)
         
         if self.articulo_id:
             resultado = articulos_db.modificar_articulo_compuesto(self.articulo_id, datos_principales, self.componentes_seleccionados)
@@ -276,8 +242,6 @@ class ABMEmpaquetadoWindow(tk.Toplevel):
         btn_modificar = ttk.Button(button_frame, text="Modificar", command=self.abrir_ventana_modificacion, style="Action.TButton")
         btn_modificar.pack(pady=5, fill="x")
 
-        # --- BOTÓN MODIFICADO ---
-        # Cambiamos el texto a "Cerrar" y le asignamos el comando para destruir la ventana
         btn_cerrar = ttk.Button(button_frame, text="Cerrar", command=self.destroy, style="Action.TButton")
         btn_cerrar.pack(pady=5, fill="x")
 

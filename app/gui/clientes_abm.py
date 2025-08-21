@@ -161,17 +161,22 @@ class ClientesFrame(ttk.Frame):
         self.tree_frame.grid_rowconfigure(0, weight=1)
         self.tree_frame.grid_columnconfigure(0, weight=1)
 
+        # --- CAMBIO AQUÍ ---
+        # 1. Definimos las columnas que existen en los datos
         columnas = ("id", "razon_social", "nombre_fantasia", "tipo_cuenta", "fecha_alta", "estado")
-        self.tree = ttk.Treeview(self.tree_frame, columns=columnas, show="headings")
+        # 2. Creamos el Treeview indicando qué columnas queremos que sean visibles
+        self.tree = ttk.Treeview(self.tree_frame, columns=columnas, show="headings",
+                                 displaycolumns=("razon_social", "nombre_fantasia", "tipo_cuenta", "fecha_alta", "estado"))
         
-        self.tree.heading("id", text="ID")
+        # 3. Definimos los títulos de las columnas visibles
         self.tree.heading("razon_social", text="Razón Social")
         self.tree.heading("nombre_fantasia", text="Nombre Fantasía")
         self.tree.heading("tipo_cuenta", text="Tipo")
         self.tree.heading("fecha_alta", text="Fecha de Alta")
         self.tree.heading("estado", text="Estado")
 
-        self.tree.column("id", width=50, anchor='center')
+        # 4. Ajustamos el ancho de las columnas visibles
+        self.tree.column("id", width=0, stretch=tk.NO) # La columna ID existe pero no se muestra
         self.tree.column("razon_social", width=250)
         self.tree.column("nombre_fantasia", width=250)
         self.tree.column("tipo_cuenta", width=100, anchor='center')
@@ -212,13 +217,14 @@ class ClientesFrame(ttk.Frame):
             self.tree.insert("", "end", values=cliente)
 
     def abrir_ventana_creacion(self):
-        VentanaCliente(self)
+        VentanaCliente(self, on_success_callback=lambda data: self.actualizar_lista())
 
     def abrir_ventana_edicion(self, event=None):
         selected_item = self.tree.focus()
         if not selected_item:
             messagebox.showwarning("Sin Selección", "Por favor, seleccione un cliente de la lista para modificar.")
             return
+        # El ID se obtiene correctamente de los datos internos, aunque la columna no sea visible
         cliente_id = self.tree.item(selected_item, "values")[0]
         VentanaCliente(self, cliente_id=cliente_id)
 

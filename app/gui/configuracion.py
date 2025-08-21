@@ -5,7 +5,7 @@ from .rubros_abm import RubrosFrame
 from .marcas_abm import MarcasFrame
 from .medios_pago_abm import MediosPagoFrame
 from .usuarios_abm import UsuariosFrame
-from app.utils import backup_manager # <--- LÍNEA AÑADIDA
+from app.utils import backup_manager
 
 class ConfiguracionImpresionFrame(ttk.Frame):
     def __init__(self, parent, style):
@@ -84,25 +84,39 @@ class ConfiguracionFrame(ttk.Frame):
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True, padx=10, pady=10)
 
+        # --- PESTAÑA 1: Datos de la Empresa ---
         self.empresa_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.empresa_tab, text='Datos de la Empresa')
         self.crear_widgets_empresa()
         
-        self.rubros_tab = RubrosFrame(self.notebook, self.style)
-        self.notebook.add(self.rubros_tab, text='Rubros y Subrubros')
+        # --- PESTAÑA 2: Rubros y Subrubros (con contenedor) ---
+        rubros_container = ttk.Frame(self.notebook, style="Content.TFrame")
+        self.notebook.add(rubros_container, text='Rubros y Subrubros')
+        # El frame del ABM se empaqueta dentro del contenedor para que no se expanda
+        rubros_frame = RubrosFrame(rubros_container, self.style)
+        rubros_frame.pack(padx=20, pady=20, anchor='n')
 
-        self.marcas_tab = MarcasFrame(self.notebook, self.style)
-        self.notebook.add(self.marcas_tab, text='Marcas')
+        # --- PESTAÑA 3: Marcas (con contenedor) ---
+        marcas_container = ttk.Frame(self.notebook, style="Content.TFrame")
+        self.notebook.add(marcas_container, text='Marcas')
+        marcas_frame = MarcasFrame(marcas_container, self.style)
+        marcas_frame.pack(padx=20, pady=20, anchor='n')
 
-        self.medios_pago_tab = MediosPagoFrame(self.notebook, self.style)
-        self.notebook.add(self.medios_pago_tab, text='Medios de Pago')
+        # --- PESTAÑA 4: Medios de Pago (con contenedor) ---
+        medios_pago_container = ttk.Frame(self.notebook, style="Content.TFrame")
+        self.notebook.add(medios_pago_container, text='Medios de Pago')
+        medios_pago_frame = MediosPagoFrame(medios_pago_container, self.style)
+        medios_pago_frame.pack(padx=20, pady=20, anchor='n')
 
+        # --- PESTAÑA 5: Impresión ---
         self.impresion_tab = ConfiguracionImpresionFrame(self.notebook, self.style)
         self.notebook.add(self.impresion_tab, text='Impresión')
         
+        # --- PESTAÑA 6: Usuarios ---
         self.usuarios_tab = UsuariosFrame(self.notebook, self.style)
         self.notebook.add(self.usuarios_tab, text='Usuarios y Permisos')
         
+        # --- PESTAÑA 7: Copias de Seguridad ---
         self.backup_tab = BackupFrame(self.notebook, self.style, main_window)
         self.notebook.add(self.backup_tab, text='Copias de Seguridad')
 

@@ -304,8 +304,9 @@ def buscar_articulos_pos(criterio):
     if conn is None: return []
     try:
         cursor = conn.cursor()
+        # --- CAMBIO: Añadimos a.imagen_path a la consulta ---
         query = """
-            SELECT a.id, a.nombre, a.precio_venta, a.unidad_de_medida, m.nombre
+            SELECT a.id, a.nombre, a.precio_venta, a.unidad_de_medida, m.nombre, a.imagen_path
             FROM Articulos a
             LEFT JOIN Marcas m ON a.marca_id = m.id
             WHERE (UPPER(a.codigo_barras) LIKE UPPER(?) OR UPPER(a.nombre) LIKE UPPER(?))
@@ -317,8 +318,10 @@ def buscar_articulos_pos(criterio):
         cursor.execute(query, params)
         resultados = []
         for row in cursor.fetchall():
+            # row[0]=id, row[1]=nombre, row[2]=precio, row[3]=unidad, row[4]=marca, row[5]=imagen
             descripcion_completa = f"{row[4]} - {row[1]}" if row[4] else row[1]
-            resultados.append((row[0], descripcion_completa, row[2], row[3]))
+            # Devolvemos la tupla con la ruta de la imagen al final
+            resultados.append((row[0], descripcion_completa, row[2], row[3], row[5]))
         return resultados
     except sqlite3.Error as e:
         print(f"Error al buscar artículos para POS: {e}")
@@ -433,36 +436,6 @@ def obtener_articulos_empaquetado():
         return cursor.fetchall()
     except sqlite3.Error as e:
         print(f"Error al obtener artículos de empaquetado: {e}")
-        return []
-    finally:
-        if conn:
-            conn.close()
-
-def obtener_articulos_para_empaquetar(criterio=None):
-    conn = _crear_conexion()
-    if conn is None: return []
-    try:
-        cursor = conn.cursor()
-        query = """
-            SELECT a.id, a.nombre, m.nombre
-            FROM Articulos a
-            LEFT JOIN Marcas m ON a.marca_id = m.id
-            LEFT JOIN Subrubros sr ON a.subrubro_id = sr.id
-            LEFT JOIN Rubros r ON sr.rubro_id = r.id
-            WHERE a.estado = 'Activo' AND (r.nombre IS NULL OR r.nombre != 'EMPAQUETADO PROPIO')
-        """
-        params = []
-        if criterio:
-            query += " AND a.nombre LIKE ?"
-            params.append(f'%{criterio}%')
-        query += " ORDER BY a.nombre"
-        cursor.execute(query, params)
-        resultados = []
-        for row in cursor.fetchall():
-            resultados.append((row[0], f"{row[2]} - {row[1]}"))
-        return resultados
-    except sqlite3.Error as e:
-        print(f"Error al obtener artículos para empaquetar: {e}")
         return []
     finally:
         if conn:
