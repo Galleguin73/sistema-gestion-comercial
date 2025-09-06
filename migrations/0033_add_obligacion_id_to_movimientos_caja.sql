@@ -1,0 +1,1 @@
+ALTER TABLE MovimientosCaja ADD COLUMN obligacion_id INTEGER REFERENCES AgendaDeObligaciones(id) ON DELETE SET NULL;

@@ -1,57 +1,126 @@
 import sqlite3
-import os
 from datetime import datetime
+from app.utils.db_manager import crear_conexion
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_DIR = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), 'database')
-DB_PATH = os.path.join(DB_DIR, 'gestion.db')
+def _format_vencimiento_para_db(vencimiento):
+    """Función auxiliar para manejar fechas de forma segura."""
+    if hasattr(vencimiento, 'strftime'): # Si es un objeto de fecha/datetime
+        return vencimiento.strftime('%Y-%m-%d')
+    elif isinstance(vencimiento, str) and vencimiento: # Si ya es un string
+        return vencimiento.split(' ')[0] # Nos aseguramos que no tenga hora
+    return None
 
-def _crear_conexion():
-    """Crea y devuelve una conexión a la base de datos."""
-    try:
-        return sqlite3.connect(DB_PATH, timeout=10)
-    except sqlite3.Error as e:
-        print(f"Error al conectar con la base de datos: {e}")
-        return None
-
-def registrar_compra(datos_factura, items_factura):
+def guardar_borrador(datos_factura, items_compra, compra_id=None):
     """
-    Registra una factura de compra completa, actualiza stock, precios
-    y genera el movimiento en la cuenta corriente del proveedor.
+    Guarda o actualiza una compra con estado 'BORRADOR'.
+    NO afecta el stock.
     """
-    conn = _crear_conexion()
-    if conn is None: return "Error de conexión con la base de datos."
+    conn = crear_conexion()
+    if conn is None: return "Error de conexión.", None
+    
     try:
         cursor = conn.cursor()
         cursor.execute("BEGIN TRANSACTION")
 
-        estado = 'PAGADA' if datos_factura.get('condicion') == 'Contado' else 'IMPAGA'
-        # --- CAMBIO: Añadimos saldo_pendiente a la inserción ---
-        query_compra = """
-            INSERT INTO Compras (proveedor_id, numero_factura, fecha_compra, monto_total, tipo_compra, estado, condicion, saldo_pendiente)
+        datos_factura['estado'] = 'BORRADOR'
+        datos_factura['saldo_pendiente'] = datos_factura['monto_total']
+
+        if compra_id is None:
+            columnas = ', '.join(datos_factura.keys())
+            placeholders = ', '.join(['?'] * len(datos_factura))
+            valores = tuple(datos_factura.values())
+            query_compra = f"INSERT INTO Compras ({columnas}) VALUES ({placeholders})"
+            cursor.execute(query_compra, valores)
+            compra_id = cursor.lastrowid
+        else:
+            set_clause = ', '.join([f"{col} = ?" for col in datos_factura.keys()])
+            valores = tuple(datos_factura.values()) + (compra_id,)
+            query_update = f"UPDATE Compras SET {set_clause} WHERE id = ?"
+            cursor.execute(query_update, valores)
+            cursor.execute("DELETE FROM ComprasDetalle WHERE compra_id = ?", (compra_id,))
+
+        detalle_query = """
+            INSERT INTO ComprasDetalle (compra_id, articulo_id, cantidad, precio_costo_unitario, iva, lote, fecha_vencimiento, subtotal) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """
-        cursor.execute(query_compra, (
-            datos_factura['proveedor_id'],
-            datos_factura['numero_factura'],
-            datos_factura['fecha_compra'],
-            datos_factura['monto_total'],
-            datos_factura['tipo_compra'],
-            estado,
-            datos_factura.get('condicion'),
-            datos_factura['monto_total'] # El saldo inicial es el total de la factura
-        ))
-        compra_id = cursor.lastrowid
+        for item in items_compra:
+            subtotal = item['cantidad'] * item['costo_unitario']
+            vencimiento_str = _format_vencimiento_para_db(item.get('vencimiento')) # CORRECCIÓN
+            cursor.execute(detalle_query, (
+                compra_id, item['articulo_id'], item['cantidad'], item['costo_unitario'], 
+                item['iva'], item.get('lote'), vencimiento_str, subtotal
+            ))
+        
+        conn.commit()
+        return "Borrador guardado correctamente.", compra_id
+    except sqlite3.Error as e:
+        conn.rollback()
+        return f"Error al guardar el borrador: {e}", None
+    finally:
+        if conn: conn.close()
 
-        for item in items_factura:
-            subtotal = item['cantidad'] * item['costo_unit']
-            query_detalle = "INSERT INTO ComprasDetalle (compra_id, articulo_id, cantidad, precio_costo_unitario, subtotal) VALUES (?, ?, ?, ?, ?)"
-            cursor.execute(query_detalle, (compra_id, item['articulo_id'], item['cantidad'], item['costo_unit'], subtotal))
+
+def finalizar_compra(datos_factura, items_compra, compra_id=None):
+    """
+    Crea o finaliza una compra. Si ya estaba finalizada, primero revierte
+    el stock anterior y luego aplica el nuevo.
+    """
+    conn = crear_conexion()
+    if conn is None: return "Error de conexión."
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("BEGIN TRANSACTION")
+
+        if compra_id:
+            cursor.execute("SELECT estado FROM Compras WHERE id = ?", (compra_id,))
+            estado_anterior = cursor.fetchone()
+            if estado_anterior and estado_anterior[0] not in ['BORRADOR', 'ANULADA']:
+                print(f"Detectada edición de compra finalizada ID {compra_id}. Reviertiendo stock anterior.")
+                cursor.execute("DELETE FROM StockLotes WHERE compra_id = ?", (compra_id,))
+
+        estado_final = 'PAGADA' if datos_factura.get('condicion') == 'Contado' else 'IMPAGA'
+        datos_factura['estado'] = estado_final
+        datos_factura['saldo_pendiente'] = datos_factura['monto_total'] if estado_final == 'IMPAGA' else 0.0
+
+        if compra_id:
+            set_clause = ', '.join([f"{col} = ?" for col in datos_factura.keys()])
+            valores = tuple(datos_factura.values()) + (compra_id,)
+            query_update = f"UPDATE Compras SET {set_clause} WHERE id = ?"
+            cursor.execute(query_update, valores)
+            cursor.execute("DELETE FROM ComprasDetalle WHERE compra_id = ?", (compra_id,))
+        else:
+            columnas = ', '.join(datos_factura.keys())
+            placeholders = ', '.join(['?'] * len(datos_factura))
+            valores = tuple(datos_factura.values())
+            query_compra = f"INSERT INTO Compras ({columnas}) VALUES ({placeholders})"
+            cursor.execute(query_compra, valores)
+            compra_id = cursor.lastrowid
+        
+        detalle_query = """
+            INSERT INTO ComprasDetalle (compra_id, articulo_id, cantidad, precio_costo_unitario, iva, lote, fecha_vencimiento, subtotal) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        lote_query = """
+            INSERT INTO StockLotes (articulo_id, cantidad, lote, fecha_vencimiento, activo, compra_id)
+            VALUES (?, ?, ?, ?, 1, ?)
+        """
+        
+        for item in items_compra:
+            subtotal = item['cantidad'] * item['costo_unitario']
+            vencimiento_str = _format_vencimiento_para_db(item.get('vencimiento')) # CORRECCIÓN
             
-            query_update_articulo = "UPDATE Articulos SET stock = stock + ? WHERE id = ?"
-            cursor.execute(query_update_articulo, (item['cantidad'], item['articulo_id']))
-
-        if datos_factura.get('condicion') == 'Cuenta Corriente':
+            cursor.execute(detalle_query, (
+                compra_id, item['articulo_id'], item['cantidad'], item['costo_unitario'],
+                item['iva'], item.get('lote'), vencimiento_str, subtotal
+            ))
+            cursor.execute(lote_query, (
+                item['articulo_id'], item['cantidad'], item.get('lote'),
+                vencimiento_str, compra_id
+            ))
+        
+        if estado_final == 'IMPAGA':
+            cursor.execute("DELETE FROM CuentasCorrientesProveedores WHERE compra_id = ?", (compra_id,))
             cursor.execute("SELECT saldo_resultante FROM CuentasCorrientesProveedores WHERE proveedor_id = ? ORDER BY id DESC LIMIT 1", (datos_factura['proveedor_id'],))
             ultimo_saldo = (cursor.fetchone() or [0.0])[0]
             nuevo_saldo = ultimo_saldo + datos_factura['monto_total']
@@ -59,23 +128,56 @@ def registrar_compra(datos_factura, items_factura):
             cursor.execute(query_cc, (datos_factura['proveedor_id'], compra_id, datos_factura['fecha_compra'], datos_factura['monto_total'], nuevo_saldo))
 
         conn.commit()
-        return "Compra registrada exitosamente."
+        return "Compra finalizada y stock actualizado exitosamente."
     except sqlite3.Error as e:
         conn.rollback()
-        return f"Error al registrar la compra: {e}"
+        return f"Error al finalizar la compra: {e}"
+    finally:
+        if conn: conn.close()
+
+# El resto de las funciones no necesitan cambios
+def anular_o_eliminar_compra(compra_id):
+    conn = crear_conexion()
+    if conn is None: return "Error de conexión."
+    try:
+        cursor = conn.cursor()
+        cursor.execute("BEGIN TRANSACTION")
+        cursor.execute("SELECT estado, proveedor_id, monto_total, condicion FROM Compras WHERE id = ?", (compra_id,))
+        compra = cursor.fetchone()
+        if not compra: raise Exception("La compra no existe.")
+        estado, proveedor_id, monto_total, condicion = compra
+        if estado == 'ANULADA': return "Error: Esta compra ya ha sido anulada."
+        if estado == 'BORRADOR':
+            cursor.execute("DELETE FROM ComprasDetalle WHERE compra_id = ?", (compra_id,))
+            cursor.execute("DELETE FROM Compras WHERE id = ?", (compra_id,))
+            mensaje = "Borrador de compra eliminado exitosamente."
+        else:
+            cursor.execute("UPDATE Compras SET estado = 'ANULADA' WHERE id = ?", (compra_id,))
+            cursor.execute("DELETE FROM StockLotes WHERE compra_id = ?", (compra_id,))
+            if condicion == 'Cuenta Corriente':
+                cursor.execute("SELECT saldo_resultante FROM CuentasCorrientesProveedores WHERE proveedor_id = ? ORDER BY id DESC LIMIT 1", (proveedor_id,))
+                ultimo_saldo = (cursor.fetchone() or [0.0])[0]
+                nuevo_saldo = ultimo_saldo - monto_total
+                query_cc = "INSERT INTO CuentasCorrientesProveedores (proveedor_id, fecha, tipo_movimiento, monto, saldo_resultante, compra_id) VALUES (?, date('now'), 'ANULACIÓN COMPRA', ?, ?, ?)"
+                cursor.execute(query_cc, (proveedor_id, -monto_total, nuevo_saldo, compra_id))
+            mensaje = "Compra anulada y stock revertido exitosamente."
+        conn.commit()
+        return mensaje
+    except Exception as e:
+        conn.rollback()
+        return f"Error al anular/eliminar la compra: {e}"
     finally:
         if conn: conn.close()
 
 def obtener_resumen_compras(criterio=None):
-    """Obtiene una lista resumida de todas las compras para la vista principal."""
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return []
     try:
         cursor = conn.cursor()
         query = """
             SELECT c.id, c.fecha_compra, p.razon_social, c.numero_factura, c.monto_total, c.estado
             FROM Compras c
-            LEFT JOIN Proveedores p ON c.proveedor_id = p.id
+            JOIN Proveedores p ON c.proveedor_id = p.id
         """
         params = []
         if criterio:
@@ -88,33 +190,26 @@ def obtener_resumen_compras(criterio=None):
         if conn: conn.close()
 
 def obtener_detalle_compra(compra_id):
-    """Obtiene el encabezado y los items de una compra específica para visualización."""
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return None, []
     try:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT c.fecha_compra, p.razon_social, c.numero_factura, c.monto_total, c.condicion, c.estado
-            FROM Compras c
-            LEFT JOIN Proveedores p ON c.proveedor_id = p.id
-            WHERE c.id = ?
-        """, (compra_id,))
+        q_enc = """SELECT c.fecha_compra, p.razon_social, c.numero_factura, c.monto_total, c.condicion, c.estado
+                   FROM Compras c JOIN Proveedores p ON c.proveedor_id = p.id WHERE c.id = ?"""
+        cursor.execute(q_enc, (compra_id,))
         encabezado = cursor.fetchone()
-
-        cursor.execute("""
-            SELECT a.nombre, cd.cantidad, cd.precio_costo_unitario, cd.subtotal
-            FROM ComprasDetalle cd
-            JOIN Articulos a ON cd.articulo_id = a.id
-            WHERE cd.compra_id = ?
-        """, (compra_id,))
+        
+        q_det = """SELECT a.nombre, cd.cantidad, cd.precio_costo_unitario, cd.subtotal
+                   FROM ComprasDetalle cd JOIN Articulos a ON cd.articulo_id = a.id WHERE cd.compra_id = ?"""
+        cursor.execute(q_det, (compra_id,))
         detalles = cursor.fetchall()
+        
         return encabezado, detalles
     finally:
         if conn: conn.close()
 
 def obtener_compra_completa_por_id(compra_id):
-    """Obtiene todos los datos de una compra para poder editarla."""
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return None, []
     try:
         cursor = conn.cursor()
@@ -122,7 +217,7 @@ def obtener_compra_completa_por_id(compra_id):
         encabezado_data = cursor.fetchone()
         
         cursor.execute("""
-            SELECT cd.articulo_id, a.codigo_barras, m.nombre, a.nombre, cd.cantidad, cd.precio_costo_unitario, a.iva
+            SELECT cd.articulo_id, a.codigo_barras, m.nombre, a.nombre, cd.cantidad, cd.precio_costo_unitario, cd.iva, cd.lote, cd.fecha_vencimiento
             FROM ComprasDetalle cd
             JOIN Articulos a ON cd.articulo_id = a.id
             LEFT JOIN Marcas m ON a.marca_id = m.id
@@ -133,117 +228,32 @@ def obtener_compra_completa_por_id(compra_id):
     finally:
         if conn: conn.close()
 
-def anular_o_eliminar_compra(compra_id):
-    """Anula una compra y revierte el stock y los movimientos de cta. cte."""
-    conn = _crear_conexion()
-    if conn is None: return "Error de conexión."
+def get_compra_column_names():
+    conn = crear_conexion()
+    if conn is None: return []
     try:
         cursor = conn.cursor()
-        cursor.execute("BEGIN TRANSACTION")
-        cursor.execute("SELECT estado, proveedor_id, monto_total, condicion FROM Compras WHERE id = ?", (compra_id,))
-        compra = cursor.fetchone()
-        if not compra: raise Exception("La compra no existe.")
-        if compra[0] == 'ANULADA': return "Error: Esta compra ya ha sido anulada."
-        
-        proveedor_id, monto_total_compra, condicion = compra[1], compra[2], compra[3]
-
-        cursor.execute("SELECT articulo_id, cantidad FROM ComprasDetalle WHERE compra_id = ?", (compra_id,))
-        detalles_compra = cursor.fetchall()
-        for articulo_id, cantidad in detalles_compra:
-            cursor.execute("UPDATE Articulos SET stock = stock - ? WHERE id = ?", (cantidad, articulo_id))
-
-        if condicion == 'Cuenta Corriente':
-            cursor.execute("SELECT saldo_resultante FROM CuentasCorrientesProveedores WHERE proveedor_id = ? ORDER BY id DESC LIMIT 1", (proveedor_id,))
-            ultimo_saldo = (cursor.fetchone() or [0.0])[0]
-            nuevo_saldo = ultimo_saldo - monto_total_compra
-            query_cc = "INSERT INTO CuentasCorrientesProveedores (proveedor_id, fecha, tipo_movimiento, monto, saldo_resultante, compra_id) VALUES (?, date('now'), 'ANULACIÓN COMPRA', ?, ?, ?)"
-            cursor.execute(query_cc, (proveedor_id, -monto_total_compra, nuevo_saldo, compra_id))
-
-        cursor.execute("UPDATE Compras SET estado = 'ANULADA' WHERE id = ?", (compra_id,))
-        conn.commit()
-        return f"Compra ID {compra_id} anulada exitosamente."
-    except Exception as e:
-        conn.rollback()
-        return f"Error al anular la compra: {e}"
+        cursor.execute("PRAGMA table_info(Compras)")
+        return [info[1] for info in cursor.fetchall()]
     finally:
         if conn: conn.close()
 
-def modificar_compra(compra_id, datos_factura_nuevos, items_factura_nuevos):
-    """
-    Modifica una compra IMPAGA sobreescribiendo los datos y recalculando
-    los saldos posteriores en la cuenta corriente.
-    """
-    conn = _crear_conexion()
-    if conn is None: return "Error de conexión."
+def obtener_compras_por_periodo(fecha_desde, fecha_hasta):
+    conn = crear_conexion()
+    if conn is None: return []
     try:
         cursor = conn.cursor()
-        cursor.execute("BEGIN TRANSACTION")
-
-        # 1. Obtener datos originales para calcular diferencias
-        cursor.execute("SELECT proveedor_id, fecha_compra FROM Compras WHERE id=?", (compra_id,))
-        compra_original = cursor.fetchone()
-        proveedor_id_original = compra_original[0]
-        fecha_original = compra_original[1]
-
-        cursor.execute("SELECT articulo_id, cantidad FROM ComprasDetalle WHERE compra_id=?", (compra_id,))
-        items_originales = {art_id: cant for art_id, cant in cursor.fetchall()}
-
-        # 2. Actualizar stock por diferencia
-        items_nuevos = {item['articulo_id']: item for item in items_factura_nuevos}
-        todos_los_ids = set(items_originales.keys()) | set(items_nuevos.keys())
-
-        for art_id in todos_los_ids:
-            cantidad_original = items_originales.get(art_id, 0)
-            item_nuevo = items_nuevos.get(art_id)
-            cantidad_nueva = item_nuevo['cantidad'] if item_nuevo else 0
-            diferencia_stock = cantidad_nueva - cantidad_original
-            if diferencia_stock != 0:
-                cursor.execute("UPDATE Articulos SET stock = stock + ? WHERE id = ?", (diferencia_stock, art_id))
-
-        # 3. Borrar detalles viejos y re-insertar los nuevos
-        cursor.execute("DELETE FROM ComprasDetalle WHERE compra_id=?", (compra_id,))
-        for item in items_factura_nuevos:
-            subtotal = item['cantidad'] * item['costo_unit']
-            query_detalle = "INSERT INTO ComprasDetalle (compra_id, articulo_id, cantidad, precio_costo_unitario, subtotal) VALUES (?, ?, ?, ?, ?)"
-            cursor.execute(query_detalle, (compra_id, item['articulo_id'], item['cantidad'], item['costo_unit'], subtotal))
-
-        # 4. Actualizar el encabezado de la compra
-        query_update = "UPDATE Compras SET proveedor_id=?, numero_factura=?, fecha_compra=?, monto_total=?, condicion=?, tipo_compra=? WHERE id=?"
-        cursor.execute(query_update, (
-            datos_factura_nuevos['proveedor_id'], datos_factura_nuevos['numero_factura'], 
-            datos_factura_nuevos['fecha_compra'], datos_factura_nuevos['monto_total'], 
-            datos_factura_nuevos['condicion'], datos_factura_nuevos['tipo_compra'], compra_id
-        ))
-
-        # 5. Recalcular la cuenta corriente del proveedor si aplica
-        if datos_factura_nuevos.get('condicion') == 'Cuenta Corriente':
-            # Sobreescribe el movimiento de la compra original
-            query_update_cc = "UPDATE CuentasCorrientesProveedores SET monto = ?, fecha = ? WHERE compra_id = ? AND tipo_movimiento LIKE 'COMPRA%'"
-            cursor.execute(query_update_cc, (datos_factura_nuevos['monto_total'], datos_factura_nuevos['fecha_compra'], compra_id))
-
-            # Obtiene el saldo justo antes de nuestra transacción
-            cursor.execute(
-                "SELECT saldo_resultante FROM CuentasCorrientesProveedores WHERE proveedor_id = ? AND id < (SELECT id FROM CuentasCorrientesProveedores WHERE compra_id = ?) ORDER BY id DESC LIMIT 1",
-                (proveedor_id_original, compra_id)
-            )
-            saldo_anterior = (cursor.fetchone() or [0.0])[0]
-
-            # Obtiene todos los movimientos desde la compra modificada en adelante para recalcular
-            cursor.execute(
-                "SELECT id, monto FROM CuentasCorrientesProveedores WHERE proveedor_id = ? AND id >= (SELECT id FROM CuentasCorrientesProveedores WHERE compra_id = ?) ORDER BY id ASC",
-                (proveedor_id_original, compra_id)
-            )
-            movimientos_a_recalcular = cursor.fetchall()
-
-            saldo_acumulado = saldo_anterior
-            for mov_id, monto in movimientos_a_recalcular:
-                saldo_acumulado += monto
-                cursor.execute("UPDATE CuentasCorrientesProveedores SET saldo_resultante = ? WHERE id = ?", (saldo_acumulado, mov_id))
-
-        conn.commit()
-        return "Compra modificada exitosamente."
-    except Exception as e:
-        conn.rollback()
-        return f"Error al modificar la compra: {e}"
+        query = """
+            SELECT c.id, c.fecha_compra, p.razon_social, c.numero_factura, c.monto_total, c.estado
+            FROM Compras c
+            LEFT JOIN Proveedores p ON c.proveedor_id = p.id
+            WHERE DATE(c.fecha_compra) BETWEEN ? AND ?
+            ORDER BY c.fecha_compra ASC
+        """
+        cursor.execute(query, (fecha_desde, fecha_hasta))
+        return cursor.fetchall()
+    except sqlite3.Error as e:
+        print(f"Error al obtener compras por período: {e}")
+        return []
     finally:
         if conn: conn.close()

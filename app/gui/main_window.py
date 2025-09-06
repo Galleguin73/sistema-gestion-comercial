@@ -1,3 +1,5 @@
+# Ubicación: app/gui/main_window.py (Actualizado)
+
 import tkinter as tk
 from tkinter import ttk, font, messagebox
 from ttkthemes import ThemedTk
@@ -13,6 +15,9 @@ from .caja import CajaFrame
 from .pos_frame import POSFrame
 from .reportes_frame import ReportesFrame
 from .dashboard_frame import DashboardFrame
+# --- NUEVA LÍNEA ---
+from .agenda_frame import AgendaFrame
+from app.utils.constants import MODULOS_SISTEMA
 
 class MainWindow(ThemedTk):
     def __init__(self, usuario_logueado):
@@ -28,7 +33,6 @@ class MainWindow(ThemedTk):
         self.state('zoomed') 
         self.protocol("WM_DELETE_WINDOW", self.salir_aplicacion)
         
-        # --- CAMBIO: Se reemplaza el bloque de estilos por una sola llamada ---
         self._configurar_estilos()
 
         self.grid_rowconfigure(0, weight=1)
@@ -51,7 +55,6 @@ class MainWindow(ThemedTk):
              self.mostrar_dashboard()
 
     def _configurar_estilos(self):
-        """Centraliza toda la configuración de estilos de la aplicación."""
         self.set_theme("clam")
         self.style = ttk.Style()
         
@@ -84,21 +87,14 @@ class MainWindow(ThemedTk):
         self.style.configure("Treeview", background="white", fieldbackground="white", foreground=self.COLOR_TEXT_DARK)
         self.style.configure("Treeview.Heading", font=("Helvetica", 10, "bold"))
         self.style.map('Treeview', background=[('selected', self.COLOR_BTN_NORMAL)], foreground=[('selected', self.COLOR_BTN_TEXT)])
-        self.style.configure("Large.Treeview", rowheight=35, font=("Helvetica", 12))
-        self.style.configure("Large.Treeview.Heading", font=("Helvetica", 14, "bold"))
-        self.style.configure("Small.Treeview.Heading", font=("Helvetica", 9, "bold"))
 
     def verificar_caja_al_inicio(self):
         caja_abierta = caja_db.obtener_estado_caja()
-        if caja_abierta:
-            self.caja_actual_id = caja_abierta[0]
-        else:
-            self.caja_actual_id = None
+        self.caja_actual_id = caja_abierta[0] if caja_abierta else None
             
     def on_nav_button_click(self, clicked_button, command_to_run):
         if self.active_button:
             self.active_button.configure(style="Nav.TButton")
-
         clicked_button.configure(style="ActiveNav.TButton")
         self.active_button = clicked_button
         command_to_run()
@@ -119,84 +115,75 @@ class MainWindow(ThemedTk):
         modulos_frame = ttk.Frame(self.nav_frame, style="Sidebar.TFrame")
         modulos_frame.pack(side="top", fill='x')
 
-        modulos = {
-            "Inicio": self.mostrar_dashboard,
-            "Caja": self.mostrar_frame_caja,
-            "POS / Venta": self.mostrar_frame_pos,
-            "Artículos": self.mostrar_frame_articulos,
-            "Empaquetado Propio": self.mostrar_frame_empaquetado,
-            "Clientes": self.mostrar_frame_clientes,
-            "Proveedores": self.mostrar_frame_proveedores,
-            "Compras": self.mostrar_frame_compras,
-            "Reportes": self.mostrar_frame_reportes,
-            "Configuración": self.mostrar_frame_configuracion
+        modulos_config = {
+            "Inicio": self.mostrar_dashboard, "Caja": self.mostrar_frame_caja,
+            "POS / Venta": self.mostrar_frame_pos, "Artículos": self.mostrar_frame_articulos,
+            "Empaquetado Propio": self.mostrar_frame_empaquetado, "Clientes": self.mostrar_frame_clientes,
+            "Proveedores": self.mostrar_frame_proveedores, "Compras": self.mostrar_frame_compras,
+            "Agenda": self.mostrar_frame_agenda, # <-- NUEVA LÍNEA
+            "Reportes": self.mostrar_frame_reportes, "Configuración": self.mostrar_frame_configuracion
         }
         
-        for texto, comando in modulos.items():
-            es_admin = self.usuario_logueado['rol'] == 'admin'
-            
-            permiso_real = texto
-            if texto == "Empaquetado Propio":
-                permiso_real = "Empaquetado"
-            
-            tiene_permiso = permiso_real in self.usuario_logueado['permisos']
+        btn_inicio = ttk.Button(modulos_frame, text="Inicio", style="Nav.TButton")
+        btn_inicio.configure(command=lambda b=btn_inicio: self.on_nav_button_click(b, self.mostrar_dashboard))
+        btn_inicio.pack(pady=2, padx=20, fill='x')
+        self.nav_buttons["Inicio"] = btn_inicio
 
-            if texto in ("Inicio", "Configuración") or es_admin or tiene_permiso:
-                btn = ttk.Button(modulos_frame, text=texto, style="Nav.TButton")
-                btn.configure(command=lambda b=btn, cmd=comando: self.on_nav_button_click(b, cmd))
-                btn.pack(pady=2, padx=20, fill='x')
-                self.nav_buttons[texto] = btn
+        permisos_usuario = self.usuario_logueado.get('permisos', []) or []
+        for modulo_nombre in MODULOS_SISTEMA:
+            es_admin = self.usuario_logueado.get('rol') == 'admin'
+            tiene_permiso = modulo_nombre in permisos_usuario
+
+            if es_admin or tiene_permiso:
+                comando = modulos_config.get(modulo_nombre)
+                if comando:
+                    btn = ttk.Button(modulos_frame, text=modulo_nombre, style="Nav.TButton")
+                    btn.configure(command=lambda b=btn, cmd=comando: self.on_nav_button_click(b, cmd))
+                    btn.pack(pady=2, padx=20, fill='x')
+                    self.nav_buttons[modulo_nombre] = btn
 
         ttk.Separator(sesion_frame).pack(fill='x', padx=20, pady=10)
         btn_logout = ttk.Button(sesion_frame, text="Cerrar Sesión", command=self.cerrar_sesion, style="Nav.TButton")
         btn_logout.pack(pady=2, padx=20, fill='x')
         btn_exit = ttk.Button(sesion_frame, text="Salir", command=self.salir_aplicacion, style="Nav.TButton")
         btn_exit.pack(pady=2, padx=20, fill='x')
-
+        
         config = config_db.obtener_configuracion()
         if config and config.get("logo_path"):
             try:
                 path = config["logo_path"]
                 img = Image.open(path)
-                
                 ancho_logo = 160
                 ancho_original, alto_original = img.size
                 ratio = ancho_original / ancho_logo
                 nuevo_alto = int(alto_original / ratio)
                 img_resized = img.resize((ancho_logo, nuevo_alto), Image.Resampling.LANCZOS)
-
                 self.logo_image = ImageTk.PhotoImage(img_resized)
                 logo_label = ttk.Label(logo_frame, image=self.logo_image, background=self.COLOR_SIDEBAR)
                 logo_label.pack()
             except Exception as e:
                 print(f"No se pudo cargar el logo: {e}")
 
-    def cerrar_sesion(self):
-        self.restart = True
-        self.destroy()
-
-    def salir_aplicacion(self):
-        self.restart = False
-        self.destroy()
-
+    def cerrar_sesion(self): self.restart = True; self.destroy()
+    def salir_aplicacion(self): self.restart = False; self.destroy()
     def limpiar_content_frame(self):
-        for widget in self.content_frame.winfo_children():
-            widget.destroy()
+        for widget in self.content_frame.winfo_children(): widget.destroy()
 
     def mostrar_dashboard(self):
         self.limpiar_content_frame()
-        dashboard = DashboardFrame(self.content_frame, self.style)
-        dashboard.pack(fill='both', expand=True, padx=10, pady=10)
+        DashboardFrame(self.content_frame, self.style).pack(fill='both', expand=True, padx=10, pady=10)
+        
+    def mostrar_frame_agenda(self): # <-- NUEVO MÉTODO
+        self.limpiar_content_frame()
+        AgendaFrame(self.content_frame, self.style, self).pack(fill='both', expand=True)
 
     def mostrar_frame_clientes(self):
         self.limpiar_content_frame()
-        clientes_frame = ClientesFrame(self.content_frame, self.style)
-        clientes_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        ClientesFrame(self.content_frame, self.style).pack(fill='both', expand=True, padx=10, pady=10)
 
     def mostrar_frame_proveedores(self):
         self.limpiar_content_frame()
-        proveedores_frame = ProveedoresFrame(self.content_frame, self.style, self)
-        proveedores_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        ProveedoresFrame(self.content_frame, self.style, self).pack(fill='both', expand=True, padx=10, pady=10)
 
     def mostrar_frame_articulos(self, oculto=False):
         self.limpiar_content_frame()
@@ -207,41 +194,30 @@ class MainWindow(ThemedTk):
 
     def mostrar_frame_empaquetado(self):
         self.limpiar_content_frame()
-        empaquetado_frame = EmpaquetadoFrame(self.content_frame, self.style)
-        empaquetado_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        EmpaquetadoFrame(self.content_frame, self.style).pack(fill='both', expand=True, padx=10, pady=10)
 
     def obtener_frame_articulos(self):
         return ArticulosFrame(self.content_frame, self.style)
-        
+
     def mostrar_frame_configuracion(self):
         self.limpiar_content_frame()
-        config_frame = ConfiguracionFrame(self.content_frame, self.style, self)
-        config_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        ConfiguracionFrame(self.content_frame, self.style, self).pack(fill='both', expand=True, padx=10, pady=10)
 
     def mostrar_frame_compras(self):
         self.limpiar_content_frame()
-        compras_frame = ComprasFrame(self.content_frame, self.style, self)
-        compras_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        ComprasFrame(self.content_frame, self.style, self).pack(fill='both', expand=True, padx=10, pady=10)
 
     def mostrar_frame_caja(self):
         self.limpiar_content_frame()
-        caja_frame = CajaFrame(self.content_frame, self.style, self.actualizar_estado_caja)
-        caja_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        CajaFrame(self.content_frame, self.style, self.actualizar_estado_caja).pack(fill='both', expand=True, padx=10, pady=10)
     
     def mostrar_frame_pos(self):
-        if not self.caja_actual_id:
-            messagebox.showerror("Caja Cerrada", "Debe abrir la caja en el módulo 'Caja' antes de poder registrar una venta.")
-            return
-            
+        if not self.caja_actual_id: messagebox.showerror("Caja Cerrada", "Debe abrir la caja para registrar una venta."); return
         self.limpiar_content_frame()
-        pos_frame = POSFrame(self.content_frame, self.style, self, self.caja_actual_id)
-        pos_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        POSFrame(self.content_frame, self.style, self, self.caja_actual_id).pack(fill='both', expand=True, padx=10, pady=10)
         
     def mostrar_frame_reportes(self):
         self.limpiar_content_frame()
-        reportes_frame = ReportesFrame(self.content_frame, self.style)
-        reportes_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        ReportesFrame(self.content_frame, self.style).pack(fill='both', expand=True, padx=10, pady=10)
         
-    def actualizar_estado_caja(self, caja_id):
-        self.caja_actual_id = caja_id
-    
+    def actualizar_estado_caja(self, caja_id): self.caja_actual_id = caja_id

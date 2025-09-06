@@ -1,22 +1,12 @@
+# Ubicación: app/database/caja_db.py (MODIFICADO)
 import sqlite3
-import os
 from datetime import datetime
+from app.utils.db_manager import crear_conexion
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_DIR = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), 'database')
-DB_PATH = os.path.join(DB_DIR, 'gestion.db')
-
-def _crear_conexion():
-    """Crea y devuelve una conexión a la base de datos."""
-    try:
-        return sqlite3.connect(DB_PATH, timeout=10)
-    except sqlite3.Error as e:
-        print(f"Error al conectar con la base de datos: {e}")
-        return None
 
 def abrir_caja(monto_inicial):
     """Abre una nueva sesión de caja."""
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return "Error de conexión"
     try:
         cursor = conn.cursor()
@@ -36,7 +26,7 @@ def abrir_caja(monto_inicial):
 
 def cerrar_caja(caja_id, monto_real_efectivo, monto_esperado_efectivo, diferencia_efectivo, detalle_cierre_json):
     """Cierra la sesión de caja actual, guardando el detalle completo del cierre."""
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return "Error de conexión"
     try:
         cursor = conn.cursor()
@@ -68,7 +58,7 @@ def cerrar_caja(caja_id, monto_real_efectivo, monto_esperado_efectivo, diferenci
 
 def obtener_estado_caja():
     """Devuelve la información de la caja abierta, si existe."""
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return None
     try:
         cursor = conn.cursor()
@@ -82,7 +72,7 @@ def obtener_movimientos_consolidados(caja_id):
     """
     Obtiene una lista unificada de todos los movimientos, incluyendo el ID del movimiento.
     """
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return []
     try:
         cursor = conn.cursor()
@@ -124,7 +114,7 @@ def anular_movimiento_caja(movimiento_id, caja_id):
     Crea un contraasiento para anular un movimiento de caja.
     Solo anula movimientos simples (no ligados a ventas o proveedores).
     """
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return "Error de conexión."
     try:
         cursor = conn.cursor()
@@ -168,6 +158,35 @@ def anular_movimiento_caja(movimiento_id, caja_id):
     except sqlite3.Error as e:
         conn.rollback()
         return f"Error de base de datos al anular: {e}"
+    finally:
+        if conn:
+            conn.close()
+
+def registrar_movimiento_caja(datos_movimiento):
+    """
+    Registra un movimiento simple de caja (ingreso o egreso) en la base de datos.
+    'datos_movimiento' es un diccionario con las claves necesarias.
+    """
+    conn = crear_conexion()
+    if conn is None:
+        return "Error de conexión."
+
+    try:
+        cursor = conn.cursor()
+        
+        # Preparamos las columnas y los placeholders para la consulta
+        columnas = ', '.join(datos_movimiento.keys())
+        placeholders = ', '.join(['?'] * len(datos_movimiento))
+        valores = tuple(datos_movimiento.values())
+
+        query = f"INSERT INTO MovimientosCaja ({columnas}) VALUES ({placeholders})"
+        
+        cursor.execute(query, valores)
+        conn.commit()
+        return "Movimiento registrado correctamente."
+    except sqlite3.Error as e:
+        conn.rollback()
+        return f"Error de base de datos al registrar movimiento: {e}"
     finally:
         if conn:
             conn.close()

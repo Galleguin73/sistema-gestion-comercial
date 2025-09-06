@@ -1,20 +1,11 @@
+# Ubicación: app/database/clientes_db.py (MODIFICADO)
 import sqlite3
-import os
 from datetime import datetime
+from app.utils.db_manager import crear_conexion
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_DIR = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), 'database')
-DB_PATH = os.path.join(DB_DIR, 'gestion.db')
-
-def _crear_conexion():
-    try:
-        return sqlite3.connect(DB_PATH, timeout=10)
-    except sqlite3.Error as e:
-        print(f"Error al conectar con la base de datos: {e}")
-        return None
 
 def agregar_cliente(datos):
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return "Error de conexión"
     try:
         cursor = conn.cursor()
@@ -34,7 +25,7 @@ def agregar_cliente(datos):
 
 def obtener_clientes(criterio=None):
     """Obtiene una lista de clientes para el Treeview, opcionalmente filtrada."""
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return []
     try:
         cursor = conn.cursor()
@@ -53,7 +44,7 @@ def obtener_clientes(criterio=None):
         if conn: conn.close()
 
 def obtener_todos_los_clientes_para_reporte():
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return []
     try:
         cursor = conn.cursor()
@@ -66,7 +57,7 @@ def obtener_todos_los_clientes_para_reporte():
         if conn: conn.close()
 
 def obtener_cuenta_corriente_cliente(cliente_id, fecha_desde=None, fecha_hasta=None):
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return []
     try:
         cursor = conn.cursor()
@@ -85,7 +76,7 @@ def obtener_cuenta_corriente_cliente(cliente_id, fecha_desde=None, fecha_hasta=N
         if conn: conn.close()
 
 def get_cliente_column_names():
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return []
     try:
         cursor = conn.cursor()
@@ -95,7 +86,7 @@ def get_cliente_column_names():
         if conn: conn.close()
 
 def obtener_cliente_por_id(id_cliente):
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return None
     try:
         cursor = conn.cursor()
@@ -109,7 +100,7 @@ def obtener_cliente_por_id(id_cliente):
         if conn: conn.close()
 
 def modificar_cliente(datos):
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return "Error de conexión"
     try:
         cursor = conn.cursor()
@@ -128,7 +119,7 @@ def modificar_cliente(datos):
         if conn: conn.close()
 
 def eliminar_cliente(id_cliente):
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return
     try:
         cursor = conn.cursor()
@@ -139,7 +130,7 @@ def eliminar_cliente(id_cliente):
         if conn: conn.close()
 
 def buscar_clientes_pos(criterio):
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return []
     try:
         cursor = conn.cursor()
@@ -154,7 +145,7 @@ def buscar_clientes_pos(criterio):
         if conn: conn.close()
 
 def registrar_cobro_cuenta_corriente(caja_id, cliente_id, pagos, concepto):
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return "Error de conexión."
     
     monto_total_cobrado = sum(p['monto'] for p in pagos)
@@ -183,7 +174,7 @@ def obtener_clientes_con_saldo():
     """
     Devuelve una lista de clientes con saldo en su cuenta corriente.
     """
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return []
     try:
         cursor = conn.cursor()

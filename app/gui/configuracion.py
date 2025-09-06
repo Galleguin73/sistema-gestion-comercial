@@ -6,6 +6,8 @@ from .marcas_abm import MarcasFrame
 from .medios_pago_abm import MediosPagoFrame
 from .usuarios_abm import UsuariosFrame
 from app.utils import backup_manager
+# --- NUEVA LÍNEA ---
+from .obligaciones_tipos_abm import ObligacionesTiposFrame
 
 class ConfiguracionImpresionFrame(ttk.Frame):
     def __init__(self, parent, style):
@@ -78,50 +80,45 @@ class BackupFrame(ttk.Frame):
 
 class ConfiguracionFrame(ttk.Frame):
     def __init__(self, parent, style, main_window):
-        super().__init__(parent)
+        super().__init__(parent, style="Content.TFrame")
         self.style = style
 
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # --- PESTAÑA 1: Datos de la Empresa ---
-        self.empresa_tab = ttk.Frame(self.notebook)
+        self.empresa_tab = ttk.Frame(self.notebook, style="Content.TFrame")
         self.notebook.add(self.empresa_tab, text='Datos de la Empresa')
         self.crear_widgets_empresa()
         
-        # --- PESTAÑA 2: Rubros y Subrubros (con contenedor) ---
         rubros_container = ttk.Frame(self.notebook, style="Content.TFrame")
         self.notebook.add(rubros_container, text='Rubros y Subrubros')
-        # El frame del ABM se empaqueta dentro del contenedor para que no se expanda
-        rubros_frame = RubrosFrame(rubros_container, self.style)
-        rubros_frame.pack(padx=20, pady=20, anchor='n')
+        RubrosFrame(rubros_container, self.style).pack(padx=20, pady=20, anchor='n')
 
-        # --- PESTAÑA 3: Marcas (con contenedor) ---
         marcas_container = ttk.Frame(self.notebook, style="Content.TFrame")
         self.notebook.add(marcas_container, text='Marcas')
-        marcas_frame = MarcasFrame(marcas_container, self.style)
-        marcas_frame.pack(padx=20, pady=20, anchor='n')
+        MarcasFrame(marcas_container, self.style).pack(padx=20, pady=20, anchor='n')
 
-        # --- PESTAÑA 4: Medios de Pago (con contenedor) ---
         medios_pago_container = ttk.Frame(self.notebook, style="Content.TFrame")
         self.notebook.add(medios_pago_container, text='Medios de Pago')
-        medios_pago_frame = MediosPagoFrame(medios_pago_container, self.style)
-        medios_pago_frame.pack(padx=20, pady=20, anchor='n')
+        MediosPagoFrame(medios_pago_container, self.style).pack(padx=20, pady=20, anchor='n')
+        
+        # --- INICIO DE NUEVAS LÍNEAS ---
+        obligaciones_container = ttk.Frame(self.notebook, style="Content.TFrame")
+        self.notebook.add(obligaciones_container, text='Tipos de Obligación')
+        ObligacionesTiposFrame(obligaciones_container, self.style).pack(fill='x', expand=True)
+        # --- FIN DE NUEVAS LÍNEAS ---
 
-        # --- PESTAÑA 5: Impresión ---
         self.impresion_tab = ConfiguracionImpresionFrame(self.notebook, self.style)
         self.notebook.add(self.impresion_tab, text='Impresión')
         
-        # --- PESTAÑA 6: Usuarios ---
         self.usuarios_tab = UsuariosFrame(self.notebook, self.style)
         self.notebook.add(self.usuarios_tab, text='Usuarios y Permisos')
         
-        # --- PESTAÑA 7: Copias de Seguridad ---
         self.backup_tab = BackupFrame(self.notebook, self.style, main_window)
         self.notebook.add(self.backup_tab, text='Copias de Seguridad')
 
     def crear_widgets_empresa(self):
-        data_frame = ttk.LabelFrame(self.empresa_tab, text="Datos de la Empresa", style="TLabelframe")
+        data_frame = ttk.LabelFrame(self.empresa_tab, text="Datos Generales", style="TLabelframe")
         data_frame.pack(padx=20, pady=20, fill='x')
         data_frame.grid_columnconfigure(1, weight=1)
         
@@ -132,6 +129,7 @@ class ConfiguracionFrame(ttk.Frame):
             ("Ingresos Brutos:", 'iibb'), ("Domicilio:", 'domicilio'),
             ("Ciudad:", 'ciudad'), ("Provincia:", 'provincia')
         ]
+        
         for i, item in enumerate(campos):
             texto, clave, *valores = item
             label = ttk.Label(data_frame, text=texto)
@@ -148,41 +146,61 @@ class ConfiguracionFrame(ttk.Frame):
         logo_entry = ttk.Entry(data_frame, textvariable=self.logo_path_var, state="readonly")
         logo_entry.grid(row=len(campos), column=1, padx=10, pady=5, sticky="ew")
         self.entries['logo_path'] = self.logo_path_var
-        
-        logo_btn = ttk.Button(data_frame, text="Seleccionar Archivo...", command=self.seleccionar_logo)
+        logo_btn = ttk.Button(data_frame, text="Seleccionar...", command=lambda: self._seleccionar_archivo(self.logo_path_var, "Seleccionar Logo", (("Archivos de imagen", "*.png *.jpg"), ("Todos", "*.*"))))
         logo_btn.grid(row=len(campos), column=2, padx=10, pady=5)
         
+        afip_frame = ttk.LabelFrame(self.empresa_tab, text="Facturación Electrónica (AFIP)", style="TLabelframe")
+        afip_frame.pack(padx=20, pady=0, fill='x')
+        afip_frame.grid_columnconfigure(1, weight=1)
+
+        ttk.Label(afip_frame, text="Certificado (.crt):").grid(row=0, column=0, padx=10, pady=5, sticky="w")
+        self.cert_path_var = tk.StringVar()
+        cert_entry = ttk.Entry(afip_frame, textvariable=self.cert_path_var, state="readonly")
+        cert_entry.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
+        self.entries['afip_cert_path'] = self.cert_path_var
+        cert_btn = ttk.Button(afip_frame, text="Seleccionar...", command=lambda: self._seleccionar_archivo(self.cert_path_var, "Seleccionar Certificado", (("Certificados", "*.crt"), ("Todos", "*.*"))))
+        cert_btn.grid(row=0, column=2, padx=10, pady=5)
+
+        ttk.Label(afip_frame, text="Clave Privada (.key):").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        self.pkey_path_var = tk.StringVar()
+        pkey_entry = ttk.Entry(afip_frame, textvariable=self.pkey_path_var, state="readonly")
+        pkey_entry.grid(row=1, column=1, padx=10, pady=5, sticky="ew")
+        self.entries['afip_pkey_path'] = self.pkey_path_var
+        pkey_btn = ttk.Button(afip_frame, text="Seleccionar...", command=lambda: self._seleccionar_archivo(self.pkey_path_var, "Seleccionar Clave Privada", (("Claves", "*.key"), ("Todos", "*.*"))))
+        pkey_btn.grid(row=1, column=2, padx=10, pady=5)
+        
         save_btn = ttk.Button(self.empresa_tab, text="Guardar Configuración", command=self.guardar, style="Action.TButton")
-        save_btn.pack(padx=20, pady=10, fill='x')
+        save_btn.pack(padx=20, pady=20, fill='x')
 
         self.cargar_datos()
 
-    def seleccionar_logo(self):
-        filepath = filedialog.askopenfilename(
-            title="Seleccionar Logo",
-            filetypes=(("Archivos de imagen", "*.png *.jpg *.jpeg *.gif"), ("Todos los archivos", "*.*"))
-        )
+    def _seleccionar_archivo(self, string_var, title, filetypes):
+        filepath = filedialog.askopenfilename(title=title, filetypes=filetypes)
         if filepath:
-            self.logo_path_var.set(filepath)
+            string_var.set(filepath)
 
     def cargar_datos(self):
         config = config_db.obtener_configuracion()
         if config:
-            for clave, entry in self.entries.items():
+            for clave, widget_or_var in self.entries.items():
                 valor = config.get(clave, "")
-                if isinstance(entry, tk.StringVar):
-                    entry.set(valor or "")
+                if isinstance(widget_or_var, tk.StringVar):
+                    widget_or_var.set(valor or "")
                 else:
-                    entry.delete(0, tk.END)
-                    entry.insert(0, valor or "")
+                    if isinstance(widget_or_var, ttk.Combobox):
+                        widget_or_var.set(valor or "")
+                    else:
+                        widget_or_var.delete(0, tk.END)
+                        widget_or_var.insert(0, valor or "")
 
     def guardar(self):
         datos = {}
-        for clave, entry in self.entries.items():
-            if isinstance(entry, tk.StringVar):
-                datos[clave] = entry.get()
+        for clave, widget_or_var in self.entries.items():
+            if isinstance(widget_or_var, tk.StringVar):
+                datos[clave] = widget_or_var.get()
             else:
-                datos[clave] = entry.get()
+                datos[clave] = widget_or_var.get()
+        
         resultado = config_db.guardar_configuracion(datos)
         if "correctamente" in resultado:
             messagebox.showinfo("Éxito", resultado)

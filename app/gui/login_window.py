@@ -1,4 +1,4 @@
-# Archivo: app/gui/login_window.py
+# Archivo: app/gui/login_window.py (VERSIÓN RESTAURADA)
 import tkinter as tk
 from tkinter import ttk, messagebox
 from PIL import Image, ImageTk
@@ -7,13 +7,11 @@ from app.database import usuarios_db, config_db
 class LoginWindow(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.withdraw() # Ocultamos la ventana mientras se configura
+        self.withdraw() 
         self.title("Inicio de Sesión")
         
-        # Atributo para guardar el resultado del login
         self.usuario_logueado = None
 
-        # --- Lógica para centrar la ventana ---
         window_width = 380
         window_height = 520
         screen_width = self.winfo_screenwidth()
@@ -29,13 +27,11 @@ class LoginWindow(tk.Tk):
         main_frame = ttk.Frame(self, padding="20")
         main_frame.pack(fill="both", expand=True)
 
-        # --- Sección del Logo ---
-        self.logo_image = None # Guardar referencia para evitar que se borre
+        self.logo_image = None
         logo_label = self._crear_logo_label(main_frame)
         if logo_label:
             logo_label.pack(pady=(10, 30))
 
-        # --- Formulario de Login ---
         form_frame = ttk.Frame(main_frame)
         form_frame.pack(fill="x", pady=10)
 
@@ -50,12 +46,14 @@ class LoginWindow(tk.Tk):
         self.user_entry.bind("<Return>", lambda event: self.pass_entry.focus())
         self.pass_entry.bind("<Return>", self.intentar_login)
 
+        s = ttk.Style()
+        s.configure('Action.TButton', font=('Helvetica', 10, 'bold'))
         login_button = ttk.Button(main_frame, text="Ingresar", command=self.intentar_login, style="Action.TButton")
         login_button.pack(fill="x", pady=20, ipady=8)
 
         self.user_entry.focus_set()
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
-        self.deiconify() # Mostramos la ventana ya centrada y configurada
+        self.deiconify()
 
     def _crear_logo_label(self, parent):
         config = config_db.obtener_configuracion()
@@ -63,7 +61,6 @@ class LoginWindow(tk.Tk):
             try:
                 path = config["logo_path"]
                 img = Image.open(path)
-                
                 ancho_logo = 180
                 ancho_original, alto_original = img.size
                 ratio = ancho_original / ancho_logo
@@ -84,18 +81,16 @@ class LoginWindow(tk.Tk):
             messagebox.showerror("Error", "Por favor, ingrese usuario y contraseña.")
             return
 
-        # Usamos tu función original para validar
         usuario_data = usuarios_db.validar_usuario(username, password)
 
         if usuario_data:
             permisos = usuarios_db.obtener_permisos_usuario(usuario_data['id'])
             usuario_data['permisos'] = permisos
-            self.usuario_logueado = usuario_data # Guardamos el resultado
-            self.destroy() # Cerramos la ventana
+            self.usuario_logueado = usuario_data
+            self.destroy()
         else:
             messagebox.showerror("Login Fallido", "Usuario o contraseña incorrectos.")
 
     def on_closing(self):
-        # Si el usuario cierra la ventana con la 'X'
         self.usuario_logueado = None
         self.destroy()

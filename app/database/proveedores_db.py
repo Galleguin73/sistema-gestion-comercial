@@ -1,21 +1,11 @@
-# Archivo: app/database/proveedores_db.py
+# Ubicación: app/database/proveedores_db.py (MODIFICADO)
 import sqlite3
-import os
 from datetime import datetime
+from app.utils.db_manager import crear_conexion
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_DIR = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), 'database')
-DB_PATH = os.path.join(DB_DIR, 'gestion.db')
-
-def _crear_conexion():
-    try:
-        return sqlite3.connect(DB_PATH, timeout=10)
-    except sqlite3.Error as e:
-        print(f"Error al conectar con la base de datos: {e}")
-        return None
 
 def agregar_proveedor(datos):
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return "Error de conexión"
     try:
         cursor = conn.cursor()
@@ -34,7 +24,7 @@ def agregar_proveedor(datos):
         if conn: conn.close()
 
 def obtener_proveedores(criterio=None):
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return []
     try:
         cursor = conn.cursor()
@@ -50,7 +40,7 @@ def obtener_proveedores(criterio=None):
         if conn: conn.close()
 
 def obtener_todos_los_proveedores_para_reporte():
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return []
     try:
         cursor = conn.cursor()
@@ -60,7 +50,7 @@ def obtener_todos_los_proveedores_para_reporte():
         if conn: conn.close()
 
 def obtener_cuenta_corriente_proveedor(proveedor_id, fecha_desde=None, fecha_hasta=None):
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return []
     try:
         cursor = conn.cursor()
@@ -76,7 +66,7 @@ def obtener_cuenta_corriente_proveedor(proveedor_id, fecha_desde=None, fecha_has
         if conn: conn.close()
 
 def get_proveedor_column_names():
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return []
     try:
         cursor = conn.cursor()
@@ -86,7 +76,7 @@ def get_proveedor_column_names():
         if conn: conn.close()
 
 def obtener_proveedor_por_id(id_proveedor):
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return None
     try:
         cursor = conn.cursor()
@@ -100,7 +90,7 @@ def obtener_proveedor_por_id(id_proveedor):
         if conn: conn.close()
 
 def modificar_proveedor(datos):
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return "Error de conexión"
     try:
         cursor = conn.cursor()
@@ -119,7 +109,7 @@ def modificar_proveedor(datos):
         if conn: conn.close()
 
 def eliminar_proveedor(id_proveedor):
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return
     try:
         cursor = conn.cursor()
@@ -130,7 +120,7 @@ def eliminar_proveedor(id_proveedor):
         if conn: conn.close()
 
 def obtener_compras_impagas(proveedor_id):
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return []
     try:
         cursor = conn.cursor()
@@ -144,7 +134,7 @@ def obtener_compras_impagas(proveedor_id):
         if conn: conn.close()
 
 def registrar_pago_a_facturas(caja_id, proveedor_id, pagos_realizados, ids_facturas, concepto):
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return "Error de conexión."
     try:
         cursor = conn.cursor()
@@ -180,7 +170,7 @@ def registrar_pago_a_facturas(caja_id, proveedor_id, pagos_realizados, ids_factu
         if conn: conn.close()
 
 def obtener_proveedor_por_nombre(nombre_proveedor):
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return None
     try:
         cursor = conn.cursor()
@@ -190,32 +180,8 @@ def obtener_proveedor_por_nombre(nombre_proveedor):
     finally:
         if conn: conn.close()
 
-def registrar_pago_cuenta_corriente(caja_id, proveedor_id, pagos, concepto):
-    conn = _crear_conexion()
-    if conn is None: return "Error de conexión."
-    monto_total_pagado = sum(p['monto'] for p in pagos)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("BEGIN TRANSACTION")
-        cursor.execute("SELECT saldo_resultante FROM CuentasCorrientesProveedores WHERE proveedor_id = ? ORDER BY id DESC LIMIT 1", (proveedor_id,))
-        ultimo_saldo_res = cursor.fetchone()
-        ultimo_saldo = ultimo_saldo_res[0] if ultimo_saldo_res else 0.0
-        nuevo_saldo = ultimo_saldo - monto_total_pagado
-        query_cc = "INSERT INTO CuentasCorrientesProveedores (proveedor_id, fecha, tipo_movimiento, monto, saldo_resultante) VALUES (?, date('now'), 'PAGO', ?, ?)"
-        cursor.execute(query_cc, (proveedor_id, -monto_total_pagado, nuevo_saldo))
-        for pago in pagos:
-            query_mov_caja = "INSERT INTO MovimientosCaja (caja_id, fecha, tipo, concepto, monto, medio_pago_id, proveedor_id) VALUES (?, ?, 'EGRESO', ?, ?, ?, ?)"
-            cursor.execute(query_mov_caja, (caja_id, datetime.now(), concepto, pago['monto'], pago['medio_pago_id'], proveedor_id))
-        conn.commit()
-        return "Pago registrado exitosamente."
-    except sqlite3.Error as e:
-        conn.rollback()
-        return f"Error de base de datos: {e}"
-    finally:
-        if conn: conn.close()
-
 def obtener_proveedores_con_saldo():
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return []
     try:
         cursor = conn.cursor()
@@ -239,7 +205,7 @@ def obtener_proveedores_con_saldo():
         if conn: conn.close()
 
 def obtener_facturas_impagas(criterio=None):
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return []
     try:
         cursor = conn.cursor()
@@ -262,7 +228,7 @@ def obtener_facturas_impagas(criterio=None):
         if conn: conn.close()
 
 def registrar_pago_a_facturas(caja_id, proveedor_id, pagos_realizados, ids_facturas, concepto):
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return "Error de conexión."
     try:
         cursor = conn.cursor()
@@ -301,7 +267,7 @@ def registrar_pago_a_facturas(caja_id, proveedor_id, pagos_realizados, ids_factu
 # --- NUEVA FUNCIÓN AÑADIDA ---
 def obtener_proveedor_por_nombre(nombre_proveedor):
     """Obtiene el ID de un proveedor a partir de su razón social."""
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return None
     try:
         cursor = conn.cursor()

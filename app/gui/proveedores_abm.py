@@ -3,16 +3,38 @@ from tkinter import ttk, messagebox
 from app.database import proveedores_db, compras_db, config_db, caja_db
 from tkcalendar import DateEntry
 from datetime import datetime
+# --- 1. IMPORTAMOS NUESTRO AYUDANTE DE FORMATO ---
+from .mixins.locale_validation_mixin import LocaleValidationMixin
+
+def format_db_date(date_str):
+    if not date_str:
+        return ""
+    try:
+        return datetime.fromisoformat(date_str.split(' ')[0]).strftime('%d/%m/%Y')
+    except (ValueError, TypeError):
+        return date_str
 
 class VentanaProveedor(tk.Toplevel):
-    def __init__(self, parent, proveedor_id=None):
+    # (Esta clase no muestra números con formato, se mantiene la lógica original)
+    def __init__(self, parent, proveedor_id=None, on_success_callback=None):
         super().__init__(parent)
         self.parent = parent
         self.proveedor_id = proveedor_id
-        self.title("Editar Proveedor" if self.proveedor_id else "Nuevo Proveedor")
+        self.on_success_callback = on_success_callback
+        titulo = "Editar Proveedor" if self.proveedor_id else "Nuevo Proveedor"
+        self.title(titulo)
         self.geometry("600x450")
         self.transient(parent); self.grab_set()
-        self.frame = ttk.Frame(self, padding="10")
+
+        style = ttk.Style(self)
+        style.configure("SectionTitle.TLabel", background="#4a4a4a", foreground="white", font=("Helvetica", 11, "bold"), padding=5, anchor="center")
+        style.configure("ContentPane.TFrame", background="white", borderwidth=1, relief="solid", bordercolor="#cccccc")
+
+        main_container = ttk.Frame(self, style="ContentPane.TFrame", padding=10)
+        main_container.pack(fill='both', expand=True, padx=10, pady=10)
+        ttk.Label(main_container, text=titulo, style="SectionTitle.TLabel").pack(fill="x", expand=True, side="top")
+        
+        self.frame = ttk.Frame(main_container, padding="10")
         self.frame.pack(fill='both', expand=True); self.frame.grid_columnconfigure(1, weight=1)
         self.entries = {}
         row_num = 0
@@ -48,7 +70,7 @@ class VentanaProveedor(tk.Toplevel):
             resultado = proveedores_db.agregar_proveedor(datos)
         if "correctamente" in resultado:
             messagebox.showinfo("Éxito", resultado, parent=self)
-            if hasattr(self.parent, 'actualizar_lista_proveedores'): self.parent.actualizar_lista_proveedores()
+            if self.on_success_callback: self.on_success_callback()
             self.destroy()
         else:
             messagebox.showerror("Error", resultado, parent=self)
@@ -67,10 +89,17 @@ class VentanaPagoCtaCte(tk.Toplevel):
         self.geometry("600x400")
         self.transient(parent); self.grab_set()
 
+        style = ttk.Style(self)
+        style.configure("SectionTitle.TLabel", background="#4a4a4a", foreground="white", font=("Helvetica", 11, "bold"), padding=5, anchor="center")
+        style.configure("ContentPane.TFrame", background="white", borderwidth=1, relief="solid", bordercolor="#cccccc")
+
         frame = ttk.Frame(self, padding="10"); frame.pack(fill='both', expand=True); frame.grid_columnconfigure(0, weight=1); frame.grid_rowconfigure(1, weight=1)
         
-        pago_frame = ttk.LabelFrame(frame, text="Agregar Medio de Pago", style="TLabelframe")
-        pago_frame.grid(row=0, column=0, pady=5, sticky='nsew')
+        pago_container = ttk.Frame(frame, style="ContentPane.TFrame")
+        pago_container.grid(row=0, column=0, pady=5, sticky='nsew')
+        ttk.Label(pago_container, text="Agregar Medio de Pago", style="SectionTitle.TLabel").pack(fill="x")
+        pago_frame = ttk.Frame(pago_container, padding=10)
+        pago_frame.pack(fill="x")
         pago_frame.grid_columnconfigure(1, weight=1)
         
         ttk.Label(pago_frame, text="Monto a Pagar:").grid(row=0, column=0, padx=5, pady=5, sticky='w')
@@ -82,7 +111,14 @@ class VentanaPagoCtaCte(tk.Toplevel):
         
         btn_agregar_pago = ttk.Button(pago_frame, text="Agregar Pago", command=self.agregar_pago); btn_agregar_pago.grid(row=2, column=1, padx=5, pady=5, sticky='e')
 
-        lista_frame = ttk.LabelFrame(frame, text="Pagos a Realizar", style="TLabelframe"); lista_frame.grid(row=1, column=0, pady=5, sticky='nsew'); lista_frame.grid_rowconfigure(0, weight=1); lista_frame.grid_columnconfigure(0, weight=1)
+        lista_container = ttk.Frame(frame, style="ContentPane.TFrame")
+        lista_container.grid(row=1, column=0, pady=5, sticky='nsew')
+        lista_container.rowconfigure(1, weight=1); lista_container.columnconfigure(0, weight=1)
+        ttk.Label(lista_container, text="Pagos a Realizar", style="SectionTitle.TLabel").grid(row=0, column=0, sticky="ew")
+        lista_frame = ttk.Frame(lista_container, padding=5)
+        lista_frame.grid(row=1, column=0, sticky="nsew")
+        lista_frame.grid_rowconfigure(0, weight=1); lista_frame.grid_columnconfigure(0, weight=1)
+
         self.tree_pagos = ttk.Treeview(lista_frame, columns=("medio", "monto"), show="headings"); self.tree_pagos.heading("medio", text="Medio de Pago"); self.tree_pagos.heading("monto", text="Monto"); self.tree_pagos.column("monto", anchor='e'); self.tree_pagos.grid(row=0, column=0, sticky='nsew')
         
         self.btn_confirmar = ttk.Button(frame, text="Confirmar y Registrar Pago", command=self.confirmar, state="disabled"); self.btn_confirmar.grid(row=2, column=0, pady=10, sticky='ew')
@@ -95,19 +131,17 @@ class VentanaPagoCtaCte(tk.Toplevel):
         except ValueError: messagebox.showwarning("Dato Inválido", "Ingrese un monto numérico.", parent=self); return
         medio_pago_id = next((mid for mid, nombre in self.medios_de_pago_data if nombre == medio_pago_nombre), None)
         self.pagos_realizados.append({'medio_pago_id': medio_pago_id, 'monto': monto})
-        self.tree_pagos.insert("", "end", values=(medio_pago_nombre, f"$ {monto:.2f}"))
+        self.tree_pagos.insert("", "end", values=(medio_pago_nombre, f"$ {LocaleValidationMixin._format_local_number(monto)}"))
         self.monto_entry.delete(0, tk.END); self.medio_pago_combo.set('')
         self.btn_confirmar.config(state="normal")
         
     def confirmar(self):
-        if not self.pagos_realizados:
-            messagebox.showwarning("Sin Pagos", "Debe agregar al menos un medio de pago.", parent=self)
-            return
+        if not self.pagos_realizados: messagebox.showwarning("Sin Pagos", "Debe agregar al menos un medio de pago.", parent=self); return
         concepto = f"Pago Cta. Cte. a Proveedor: {self.proveedor_nombre}"
         resultado = proveedores_db.registrar_pago_a_facturas(self.caja_id, self.proveedor_id, self.pagos_realizados, self.ids_facturas, concepto)
         if "exitosamente" in resultado:
             messagebox.showinfo("Éxito", resultado, parent=self.parent)
-            self.parent.actualizar_lista_ctas_pagar()
+            self.parent.actualizar_lista_proveedores()
             self.destroy()
         else:
             messagebox.showerror("Error", resultado, parent=self)
@@ -115,130 +149,169 @@ class VentanaPagoCtaCte(tk.Toplevel):
 class ProveedoresFrame(ttk.Frame):
     def __init__(self, parent, style, main_window):
         super().__init__(parent, style="Content.TFrame")
-        self.style = style; self.main_window = main_window
-        self.notebook = ttk.Notebook(self); self.notebook.pack(fill="both", expand=True, padx=10, pady=10)
-        self.ctas_pagar_tab = ttk.Frame(self.notebook, style="Content.TFrame")
-        self.proveedores_list_tab = ttk.Frame(self.notebook, style="Content.TFrame")
-        self.resumen_cc_tab = ttk.Frame(self.notebook, style="Content.TFrame")
-        self.notebook.add(self.ctas_pagar_tab, text='Cuentas por Pagar')
-        self.notebook.add(self.proveedores_list_tab, text='Listado de Proveedores')
-        self.notebook.add(self.resumen_cc_tab, text='Resumen de Cuenta')
-        self.crear_widgets_ctas_pagar()
-        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
+        self.style = style
+        self.main_window = main_window
 
-    def on_tab_changed(self, event):
-        selected_tab_index = self.notebook.index(self.notebook.select())
-        if selected_tab_index == 1 and not self.proveedores_list_tab.winfo_children(): self.crear_widgets_proveedores_list()
-        elif selected_tab_index == 2 and not self.resumen_cc_tab.winfo_children(): self.crear_widgets_resumen_cc()
+        self.style.configure("SectionTitle.TLabel", background="#4a4a4a", foreground="white", font=("Helvetica", 11, "bold"), padding=5, anchor="center")
+        self.style.configure("ContentPane.TFrame", background="white", borderwidth=1, relief="solid", bordercolor="#cccccc")
 
-    def crear_widgets_ctas_pagar(self):
-        frame = self.ctas_pagar_tab
-        frame.grid_rowconfigure(1, weight=1); frame.grid_columnconfigure(0, weight=1)
-        filtros_frame = ttk.Frame(frame, style="Content.TFrame"); filtros_frame.grid(row=0, column=0, padx=0, pady=(0,5), sticky="ew")
-        ttk.Label(filtros_frame, text="Buscar:").pack(side="left")
-        self.search_var_ctas = tk.StringVar(); self.search_var_ctas.trace_add("write", lambda n,i,m: self.actualizar_lista_ctas_pagar())
-        search_entry = ttk.Entry(filtros_frame, textvariable=self.search_var_ctas, width=40); search_entry.pack(side="left", fill="x", expand=True, padx=5)
-        tree_frame = ttk.Frame(frame, style="Content.TFrame"); tree_frame.grid(row=1, column=0, sticky="nsew")
-        tree_frame.grid_rowconfigure(0, weight=1); tree_frame.grid_columnconfigure(0, weight=1)
-        columnas = ("id", "proveedor", "factura", "fecha_emision", "fecha_vto", "total", "saldo")
-        self.tree_ctas_pagar = ttk.Treeview(tree_frame, columns=columnas, show="headings", selectmode="extended")
-        self.tree_ctas_pagar.heading("proveedor", text="Proveedor"); self.tree_ctas_pagar.heading("factura", text="N° Factura"); self.tree_ctas_pagar.heading("fecha_emision", text="F. Emisión"); self.tree_ctas_pagar.heading("fecha_vto", text="F. Vencimiento"); self.tree_ctas_pagar.heading("total", text="Monto Original"); self.tree_ctas_pagar.heading("saldo", text="Saldo Pendiente")
-        self.tree_ctas_pagar.column("id", width=0, stretch=tk.NO); self.tree_ctas_pagar.column("proveedor", width=250); self.tree_ctas_pagar.column("total", anchor="e"); self.tree_ctas_pagar.column("saldo", anchor="e")
-        self.tree_ctas_pagar.pack(side='left', fill='both', expand=True)
-        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree_ctas_pagar.yview); scrollbar.pack(side='right', fill='y'); self.tree_ctas_pagar.configure(yscrollcommand=scrollbar.set)
-        summary_frame = ttk.Frame(frame); summary_frame.grid(row=2, column=0, sticky="ew", pady=(10,0)); summary_frame.columnconfigure(0, weight=1)
-        ttk.Button(summary_frame, text="Registrar Pago de Factura(s) Seleccionada(s)", style="Action.TButton", command=self.registrar_pago).pack(side="left")
-        self.total_deuda_label = ttk.Label(summary_frame, text="Deuda Total: $ 0.00", font=("Helvetica", 11, "bold")); self.total_deuda_label.pack(side="right")
-        self.actualizar_lista_ctas_pagar()
-    
-    def actualizar_lista_ctas_pagar(self):
-        criterio = self.search_var_ctas.get() if hasattr(self, 'search_var_ctas') else None
-        for row in self.tree_ctas_pagar.get_children(): self.tree_ctas_pagar.delete(row)
-        facturas = proveedores_db.obtener_facturas_impagas(criterio)
-        total_deuda = 0.0
-        for f in facturas:
-            total_deuda += f[6] if f[6] else 0.0
-            valores = list(f); valores[5] = f"$ {f[5] or 0.0:.2f}"; valores[6] = f"$ {f[6] or 0.0:.2f}"
-            self.tree_ctas_pagar.insert("", "end", values=tuple(valores), iid=f[0])
-        self.total_deuda_label.config(text=f"Deuda Total: $ {total_deuda:.2f}")
+        self.paned_window = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
+        self.paned_window.pack(fill="both", expand=True, padx=10, pady=10)
 
-    def registrar_pago(self):
-        if not self.main_window.caja_actual_id: messagebox.showerror("Caja Cerrada", "Debe abrir la caja para registrar un pago.", parent=self); return
-        selected_iids = self.tree_ctas_pagar.selection()
-        if not selected_iids: messagebox.showwarning("Sin Selección", "Por favor, seleccione al menos una factura para pagar.", parent=self); return
+        left_panel = ttk.Frame(self.paned_window)
+        self.paned_window.add(left_panel, weight=1)
+        self._crear_panel_izquierdo(left_panel)
         
-        selected_values = [self.tree_ctas_pagar.item(iid, "values") for iid in selected_iids]
-        primer_proveedor = selected_values[0][1]
-        for values in selected_values[1:]:
-            if values[1] != primer_proveedor:
-                messagebox.showwarning("Selección Inválida", "Solo puede registrar pagos para un único proveedor a la vez.", parent=self); return
+        right_panel = ttk.Frame(self.paned_window)
+        self.paned_window.add(right_panel, weight=2)
+        self._crear_panel_derecho(right_panel)
         
-        ids_facturas = [vals[0] for vals in selected_values]
-        proveedor_id = proveedores_db.obtener_proveedor_por_nombre(primer_proveedor)
-        if not proveedor_id: messagebox.showerror("Error", f"No se pudo encontrar el ID del proveedor '{primer_proveedor}'.", parent=self); return
-        
-        VentanaPagoCtaCte(self, self.main_window.caja_actual_id, proveedor_id, primer_proveedor, ids_facturas)
-
-    def crear_widgets_proveedores_list(self):
-        frame = self.proveedores_list_tab
-        frame.grid_rowconfigure(1, weight=1); frame.grid_columnconfigure(0, weight=1)
-        filtros_frame = ttk.Frame(frame, style="Content.TFrame"); filtros_frame.grid(row=0, column=0, padx=0, pady=(0,5), sticky="ew")
-        ttk.Label(filtros_frame, text="Buscar Proveedor:").pack(side="left", padx=(0,5))
-        self.search_var_prov = tk.StringVar(); self.search_var_prov.trace_add("write", lambda n, i, m: self.actualizar_lista_proveedores())
-        search_entry = ttk.Entry(filtros_frame, textvariable=self.search_var_prov, width=40); search_entry.pack(side="left", fill="x", expand=True)
-        self.tree_frame_prov = ttk.Frame(frame, style="Content.TFrame"); self.tree_frame_prov.grid(row=1, column=0, sticky="nsew")
-        self.tree_frame_prov.grid_rowconfigure(0, weight=1); self.tree_frame_prov.grid_columnconfigure(0, weight=1)
-        columnas_prov = ("id", "razon_social", "cuit_dni", "telefono"); self.tree_prov = ttk.Treeview(self.tree_frame_prov, columns=columnas_prov, show="headings", displaycolumns=("razon_social", "cuit_dni", "telefono"))
-        self.tree_prov.heading("razon_social", text="Razón Social"); self.tree_prov.heading("cuit_dni", text="CUIT/DNI"); self.tree_prov.heading("telefono", text="Teléfono")
-        self.tree_prov.column("id", width=0, stretch=tk.NO); self.tree_prov.column("razon_social", width=300)
-        self.tree_prov.pack(side='left', fill='both', expand=True); self.tree_prov.bind("<Double-1>", self.abrir_ventana_edicion_proveedor)
-        scrollbar_prov = ttk.Scrollbar(self.tree_frame_prov, orient="vertical", command=self.tree_prov.yview); scrollbar_prov.pack(side='right', fill='y'); self.tree_prov.configure(yscrollcommand=scrollbar_prov.set)
-        button_frame_prov = ttk.Frame(frame); button_frame_prov.grid(row=1, column=1, padx=10, pady=0, sticky="ns")
-        ttk.Button(button_frame_prov, text="Agregar Nuevo", command=self.abrir_ventana_creacion_proveedor, style="Action.TButton").pack(pady=5, fill='x')
-        ttk.Button(button_frame_prov, text="Modificar", command=self.abrir_ventana_edicion_proveedor, style="Action.TButton").pack(pady=5, fill='x')
         self.actualizar_lista_proveedores()
 
+    def _crear_panel_izquierdo(self, parent):
+        parent.grid_rowconfigure(0, weight=1); parent.grid_columnconfigure(0, weight=1)
+        
+        proveedores_container = ttk.Frame(parent, style="ContentPane.TFrame")
+        proveedores_container.grid(row=0, column=0, sticky="nsew", pady=(0,5))
+        proveedores_container.rowconfigure(2, weight=1); proveedores_container.columnconfigure(0, weight=1)
+        
+        ttk.Label(proveedores_container, text="Listado de Proveedores", style="SectionTitle.TLabel").grid(row=0, column=0, sticky="ew")
+        
+        search_frame = ttk.Frame(proveedores_container, padding=5); search_frame.grid(row=1, column=0, sticky="ew")
+        search_frame.columnconfigure(1, weight=1)
+        ttk.Label(search_frame, text="Buscar:").grid(row=0, column=0)
+        self.search_var_prov = tk.StringVar(); self.search_var_prov.trace_add("write", lambda n, i, m: self.actualizar_lista_proveedores())
+        search_entry = ttk.Entry(search_frame, textvariable=self.search_var_prov); search_entry.grid(row=0, column=1, sticky="ew", padx=5)
+
+        tree_content = ttk.Frame(proveedores_container); tree_content.grid(row=2, column=0, sticky="nsew", padx=5, pady=(0,5))
+        tree_content.grid_rowconfigure(0, weight=1); tree_content.grid_columnconfigure(0, weight=1)
+
+        columnas_prov = ("id", "razon_social", "saldo"); self.tree_prov = ttk.Treeview(tree_content, columns=columnas_prov, show="headings", displaycolumns=("razon_social", "saldo"))
+        self.tree_prov.heading("razon_social", text="Razón Social"); self.tree_prov.heading("saldo", text="Saldo")
+        self.tree_prov.column("saldo", anchor="e", width=100)
+        self.tree_prov.grid(row=0, column=0, sticky="nsew")
+        self.tree_prov.bind("<<TreeviewSelect>>", self.on_proveedor_selected)
+        
+        buttons_frame = ttk.Frame(parent)
+        buttons_frame.grid(row=1, column=0, sticky="ew")
+        ttk.Button(buttons_frame, text="Nuevo", command=self.abrir_ventana_creacion_proveedor).pack(side="left", expand=True, fill="x", padx=2)
+        ttk.Button(buttons_frame, text="Modificar", command=self.abrir_ventana_edicion_proveedor).pack(side="left", expand=True, fill="x", padx=2)
+
+    def _crear_panel_derecho(self, parent):
+        parent.grid_rowconfigure(1, weight=1); parent.grid_columnconfigure(0, weight=1)
+        
+        self.placeholder_label = ttk.Label(parent, text="Seleccione un proveedor para ver su detalle", font=("Helvetica", 14, "italic"), style="TLabel")
+        self.placeholder_label.place(relx=0.5, rely=0.5, anchor="center")
+
+        self.detalle_container = ttk.Frame(parent)
+        
+        datos_container = ttk.Frame(self.detalle_container, style="ContentPane.TFrame")
+        datos_container.pack(fill="x", pady=(0, 10))
+        ttk.Label(datos_container, text="Datos del Proveedor", style="SectionTitle.TLabel").pack(fill="x")
+        datos_frame = ttk.Frame(datos_container, padding=10); datos_frame.pack(fill="x")
+        datos_frame.columnconfigure(1, weight=1)
+        
+        self.detalle_labels = {}
+        campos = [("Razón Social:", "razon_social"), ("CUIT/DNI:", "cuit_dni"), ("Teléfono:", "telefono"), ("Saldo Actual:", "saldo_cuenta_corriente")]
+        for i, (texto, clave) in enumerate(campos):
+            ttk.Label(datos_frame, text=texto, font=("Helvetica", 9, "bold")).grid(row=i, column=0, sticky="w")
+            self.detalle_labels[clave] = ttk.Label(datos_frame, text="-")
+            self.detalle_labels[clave].grid(row=i, column=1, sticky="w", padx=5)
+
+        historial_container = ttk.Frame(self.detalle_container, style="ContentPane.TFrame")
+        historial_container.pack(fill="both", expand=True)
+        historial_container.rowconfigure(1, weight=1); historial_container.columnconfigure(0, weight=1)
+        ttk.Label(historial_container, text="Historial de Cuenta Corriente", style="SectionTitle.TLabel").grid(row=0, column=0, sticky="ew")
+        
+        historial_frame = ttk.Frame(historial_container); historial_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+        historial_frame.rowconfigure(0, weight=1); historial_frame.columnconfigure(0, weight=1)
+
+        columnas_hist = ("fecha", "tipo", "monto", "saldo"); self.tree_historial = ttk.Treeview(historial_frame, columns=columnas_hist, show="headings")
+        self.tree_historial.heading("fecha", text="Fecha"); self.tree_historial.heading("tipo", text="Tipo Movimiento"); self.tree_historial.heading("monto", text="Monto"); self.tree_historial.heading("saldo", text="Saldo Resultante")
+        self.tree_historial.column("monto", anchor="e"); self.tree_historial.column("saldo", anchor="e"); self.tree_historial.grid(row=0, column=0, sticky="nsew")
+        
+        buttons_hist_frame = ttk.Frame(self.detalle_container)
+        buttons_hist_frame.pack(fill="x", pady=10)
+        ttk.Button(buttons_hist_frame, text="Registrar Pago", command=self.registrar_pago).pack(side="left", expand=True, fill="x", padx=2)
+        ttk.Button(buttons_hist_frame, text="Imprimir Resumen", command=self.imprimir_resumen).pack(side="left", expand=True, fill="x", padx=2)
+
     def actualizar_lista_proveedores(self):
+        self.on_proveedor_selected(None)
         for row in self.tree_prov.get_children(): self.tree_prov.delete(row)
-        criterio = self.search_var_prov.get() if hasattr(self, 'search_var_prov') else None
-        proveedores = proveedores_db.obtener_proveedores(criterio=criterio)
-        for proveedor in proveedores: self.tree_prov.insert("", "end", values=proveedor)
+        
+        criterio = self.search_var_prov.get() if hasattr(self, 'search_var_prov') else ""
+        proveedores = proveedores_db.obtener_proveedores(criterio)
+        proveedores_con_saldo = {p[0]: p[2] for p in proveedores_db.obtener_proveedores_con_saldo()}
+        
+        for prov in proveedores:
+            prov_id, nombre = prov[0], prov[1]
+            saldo = proveedores_con_saldo.get(prov_id, 0.0)
+            if abs(saldo) < 0.01: saldo = 0.0
+            
+            display_nombre = f"💰 {nombre}" if saldo != 0 else nombre
+            display_saldo = f"$ {LocaleValidationMixin._format_local_number(saldo)}" if saldo != 0 else ""
+            
+            self.tree_prov.insert("", "end", iid=prov_id, values=(prov_id, display_nombre, display_saldo))
+
+    def on_proveedor_selected(self, event=None):
+        selected_item = self.tree_prov.focus()
+        if not selected_item:
+            self.detalle_container.pack_forget(); self.placeholder_label.place(relx=0.5, rely=0.5, anchor="center")
+            return
+        
+        self.placeholder_label.place_forget(); self.detalle_container.pack(fill="both", expand=True, pady=(0,5))
+        proveedor_id = int(selected_item)
+        
+        proveedor_data = proveedores_db.obtener_proveedor_por_id(proveedor_id)
+        if proveedor_data:
+            keys = proveedores_db.get_proveedor_column_names()
+            proveedor_dict = dict(zip(keys, proveedor_data))
+            
+            self.detalle_labels["razon_social"].config(text=proveedor_dict.get("razon_social", "-"))
+            self.detalle_labels["cuit_dni"].config(text=proveedor_dict.get("cuit_dni", "-"))
+            self.detalle_labels["telefono"].config(text=proveedor_dict.get("telefono", "-"))
+            
+            saldo_actual = 0.0
+            historial = proveedores_db.obtener_cuenta_corriente_proveedor(proveedor_id)
+            if historial:
+                saldo_actual = historial[-1][3]
+            if abs(saldo_actual) < 0.01: saldo_actual = 0.0
+            
+            self.detalle_labels["saldo_cuenta_corriente"].config(text=f"$ {LocaleValidationMixin._format_local_number(saldo_actual)}", foreground="red" if saldo_actual != 0 else "green")
+            
+        for row in self.tree_historial.get_children(): self.tree_historial.delete(row)
+        
+        for mov in historial:
+            fecha, tipo, monto, saldo_res = mov
+            if abs(monto) < 0.01: monto = 0.0
+            if abs(saldo_res) < 0.01: saldo_res = 0.0
+            valores = (format_db_date(fecha), tipo, f"$ {LocaleValidationMixin._format_local_number(monto)}", f"$ {LocaleValidationMixin._format_local_number(saldo_res)}")
+            self.tree_historial.insert("", "end", values=valores)
 
     def abrir_ventana_creacion_proveedor(self):
-        ventana = VentanaProveedor(self); self.wait_window(ventana)
+        VentanaProveedor(self, on_success_callback=self.actualizar_lista_proveedores)
 
     def abrir_ventana_edicion_proveedor(self, event=None):
         selected_item = self.tree_prov.focus()
         if not selected_item: messagebox.showwarning("Sin Selección", "Por favor, seleccione un proveedor."); return
-        proveedor_id = self.tree_prov.item(selected_item, "values")[0]
-        ventana = VentanaProveedor(self, proveedor_id=proveedor_id); self.wait_window(ventana)
+        proveedor_id = int(selected_item)
+        VentanaProveedor(self, proveedor_id=proveedor_id, on_success_callback=self.actualizar_lista_proveedores)
 
-    def crear_widgets_resumen_cc(self):
-        frame = self.resumen_cc_tab
-        frame.grid_rowconfigure(1, weight=1); frame.grid_columnconfigure(0, weight=1)
-        filtros_frame = ttk.LabelFrame(frame, text="Filtros", style="TLabelframe"); filtros_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
-        ttk.Label(filtros_frame, text="Seleccionar Proveedor:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        self.ccp_proveedor_combo = ttk.Combobox(filtros_frame, state="readonly", width=30); self.ccp_proveedor_combo.grid(row=0, column=1, padx=5, pady=5)
-        self.proveedores_data_reporte = proveedores_db.obtener_todos_los_proveedores_para_reporte(); self.ccp_proveedor_combo['values'] = [p[1] for p in self.proveedores_data_reporte]
-        ttk.Label(filtros_frame, text="Desde:").grid(row=0, column=2, padx=(10, 5), pady=5, sticky="w")
-        self.ccp_fecha_desde = DateEntry(filtros_frame, date_pattern='yyyy-mm-dd', width=12); self.ccp_fecha_desde.grid(row=0, column=3, padx=5, pady=5)
-        ttk.Label(filtros_frame, text="Hasta:").grid(row=0, column=4, padx=5, pady=5, sticky="w")
-        self.ccp_fecha_hasta = DateEntry(filtros_frame, date_pattern='yyyy-mm-dd', width=12); self.ccp_fecha_hasta.grid(row=0, column=5, padx=5, pady=5)
-        btn_generar = ttk.Button(filtros_frame, text="Generar Resumen", command=self.generar_reporte_cc_proveedor, style="Action.TButton"); btn_generar.grid(row=0, column=6, padx=10, pady=5)
-        resultados_frame = ttk.Frame(frame, style="Content.TFrame"); resultados_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
-        resultados_frame.grid_rowconfigure(0, weight=1); resultados_frame.grid_columnconfigure(0, weight=1)
-        columnas = ("fecha", "tipo", "monto", "saldo"); self.tree_cc_proveedores = ttk.Treeview(resultados_frame, columns=columnas, show="headings")
-        self.tree_cc_proveedores.heading("fecha", text="Fecha"); self.tree_cc_proveedores.heading("tipo", text="Tipo Movimiento"); self.tree_cc_proveedores.heading("monto", text="Monto"); self.tree_cc_proveedores.heading("saldo", text="Saldo Resultante")
-        self.tree_cc_proveedores.column("monto", anchor="e"); self.tree_cc_proveedores.column("saldo", anchor="e"); self.tree_cc_proveedores.grid(row=0, column=0, sticky="nsew")
-
-    def generar_reporte_cc_proveedor(self):
-        proveedor_nombre = self.ccp_proveedor_combo.get()
-        if not proveedor_nombre: messagebox.showwarning("Dato Faltante", "Por favor, seleccione un proveedor."); return
-        proveedor_id = next((pid for pid, nombre in self.proveedores_data_reporte if nombre == proveedor_nombre), None)
-        if proveedor_id is None: messagebox.showerror("Error", "No se pudo encontrar el ID del proveedor seleccionado."); return
-        fecha_desde = self.ccp_fecha_desde.get(); fecha_hasta = self.ccp_fecha_hasta.get()
-        for row in self.tree_cc_proveedores.get_children(): self.tree_cc_proveedores.delete(row)
-        movimientos = proveedores_db.obtener_cuenta_corriente_proveedor(proveedor_id, fecha_desde, fecha_hasta)
-        for mov in movimientos:
-            valores = (mov[0], mov[1], f"$ {mov[2]:.2f}", f"$ {mov[3]:.2f}")
-            self.tree_cc_proveedores.insert("", "end", values=valores)
+    def registrar_pago(self):
+        if not self.main_window.caja_actual_id: messagebox.showerror("Caja Cerrada", "Debe abrir la caja para registrar un pago.", parent=self); return
+        selected_item = self.tree_prov.focus()
+        if not selected_item: messagebox.showwarning("Sin Selección", "Seleccione un proveedor para registrar un pago.", parent=self); return
+        
+        proveedor_id = int(selected_item)
+        proveedor_nombre = self.tree_prov.item(selected_item, "values")[1].replace("💰 ", "")
+        
+        facturas_impagas = compras_db.obtener_compras_impagas(proveedor_id)
+        if not facturas_impagas:
+            messagebox.showinfo("Sin Deuda", f"El proveedor {proveedor_nombre} no tiene facturas pendientes de pago.", parent=self)
+            return
+            
+        ids_facturas = [f[0] for f in facturas_impagas]
+        VentanaPagoCtaCte(self, self.main_window.caja_actual_id, proveedor_id, proveedor_nombre, ids_facturas)
+    
+    def imprimir_resumen(self):
+        messagebox.showinfo("En Desarrollo", "La funcionalidad para imprimir resúmenes se implementará próximamente.")

@@ -2,7 +2,9 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from app.database import clientes_db, config_db, ventas_db
 from tkcalendar import DateEntry
+from datetime import datetime
 
+# La ventana para agregar/editar clientes no necesita grandes cambios.
 class VentanaCliente(tk.Toplevel):
     def __init__(self, parent, cliente_id=None, on_success_callback=None):
         super().__init__(parent)
@@ -16,7 +18,16 @@ class VentanaCliente(tk.Toplevel):
         self.transient(parent)
         self.grab_set()
         
-        self.frame = ttk.Frame(self, padding="10")
+        # --- Aplicamos el nuevo estilo de secciones ---
+        style = ttk.Style(self)
+        style.configure("SectionTitle.TLabel", background="#4a4a4a", foreground="white", font=("Helvetica", 11, "bold"), padding=5, anchor="center")
+        style.configure("ContentPane.TFrame", background="white", borderwidth=1, relief="solid", bordercolor="#cccccc")
+        
+        main_container = ttk.Frame(self, style="ContentPane.TFrame", padding=10)
+        main_container.pack(fill='both', expand=True, padx=10, pady=10)
+        ttk.Label(main_container, text=titulo, style="SectionTitle.TLabel").pack(fill="x", expand=True, side="top")
+        
+        self.frame = ttk.Frame(main_container, padding="10")
         self.frame.pack(fill='both', expand=True)
         self.frame.grid_columnconfigure(1, weight=1)
 
@@ -139,82 +150,181 @@ class VentanaCliente(tk.Toplevel):
         else:
             messagebox.showerror("Error", resultado, parent=self)
 
+# --- CLASE PRINCIPAL COMPLETAMENTE REESCRITA ---
 class ClientesFrame(ttk.Frame):
     def __init__(self, parent, style):
         super().__init__(parent, style="Content.TFrame")
         self.style = style
-
-        self.grid_rowconfigure(1, weight=1)
-        self.grid_columnconfigure(0, weight=1)
-
-        filtros_frame = ttk.Frame(self, style="Content.TFrame")
-        filtros_frame.grid(row=0, column=0, padx=10, pady=(10,0), sticky="ew")
         
-        ttk.Label(filtros_frame, text="Buscar Cliente:").pack(side="left", padx=(0,5))
-        self.search_var = tk.StringVar()
-        self.search_var.trace_add("write", lambda name, index, mode: self.actualizar_lista())
-        search_entry = ttk.Entry(filtros_frame, textvariable=self.search_var, width=40)
-        search_entry.pack(side="left", fill="x", expand=True)
+        # Aplicamos los estilos
+        self.style.configure("SectionTitle.TLabel", background="#4a4a4a", foreground="white", font=("Helvetica", 11, "bold"), padding=5, anchor="center")
+        self.style.configure("ContentPane.TFrame", background="white", borderwidth=1, relief="solid", bordercolor="#cccccc")
 
-        self.tree_frame = ttk.Frame(self, style="Content.TFrame")
-        self.tree_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
-        self.tree_frame.grid_rowconfigure(0, weight=1)
-        self.tree_frame.grid_columnconfigure(0, weight=1)
+        # Usamos PanedWindow para los dos paneles principales
+        self.paned_window = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
+        self.paned_window.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # --- CAMBIO AQUÍ ---
-        # 1. Definimos las columnas que existen en los datos
-        columnas = ("id", "razon_social", "nombre_fantasia", "tipo_cuenta", "fecha_alta", "estado")
-        # 2. Creamos el Treeview indicando qué columnas queremos que sean visibles
-        self.tree = ttk.Treeview(self.tree_frame, columns=columnas, show="headings",
-                                 displaycolumns=("razon_social", "nombre_fantasia", "tipo_cuenta", "fecha_alta", "estado"))
+        # --- Panel Izquierdo ---
+        left_panel = ttk.Frame(self.paned_window)
+        self.paned_window.add(left_panel, weight=1)
+        self._crear_panel_izquierdo(left_panel)
         
-        # 3. Definimos los títulos de las columnas visibles
-        self.tree.heading("razon_social", text="Razón Social")
-        self.tree.heading("nombre_fantasia", text="Nombre Fantasía")
-        self.tree.heading("tipo_cuenta", text="Tipo")
-        self.tree.heading("fecha_alta", text="Fecha de Alta")
-        self.tree.heading("estado", text="Estado")
-
-        # 4. Ajustamos el ancho de las columnas visibles
-        self.tree.column("id", width=0, stretch=tk.NO) # La columna ID existe pero no se muestra
-        self.tree.column("razon_social", width=250)
-        self.tree.column("nombre_fantasia", width=250)
-        self.tree.column("tipo_cuenta", width=100, anchor='center')
-        self.tree.column("fecha_alta", width=120, anchor='center')
-        self.tree.column("estado", width=100, anchor='center')
-
-        self.tree.pack(side='left', fill='both', expand=True)
-        self.tree.bind("<Double-1>", self.abrir_ventana_edicion)
-
-        scrollbar = ttk.Scrollbar(self.tree_frame, orient="vertical", command=self.tree.yview)
-        scrollbar.pack(side='right', fill='y')
-        self.tree.configure(yscrollcommand=scrollbar.set)
+        # --- Panel Derecho ---
+        right_panel = ttk.Frame(self.paned_window)
+        self.paned_window.add(right_panel, weight=2)
+        self._crear_panel_derecho(right_panel)
         
-        self.button_frame = ttk.Frame(self, style="Content.TFrame")
-        self.button_frame.grid(row=1, column=1, padx=10, pady=10, sticky="ns")
-
-        self.add_btn = ttk.Button(self.button_frame, text="Agregar Nuevo", command=self.abrir_ventana_creacion, style="Action.TButton")
-        self.add_btn.pack(pady=5, fill='x')
-        
-        self.update_btn = ttk.Button(self.button_frame, text="Modificar", command=self.abrir_ventana_edicion, style="Action.TButton")
-        self.update_btn.pack(pady=5, fill='x')
-        
-        self.delete_btn = ttk.Button(self.button_frame, text="Eliminar", command=self.eliminar_cliente, style="Action.TButton")
-        self.delete_btn.pack(pady=5, fill='x')
-
-        self.history_btn = ttk.Button(self.button_frame, text="Ver Historial", command=self.ver_historial_cliente, style="Action.TButton")
-        self.history_btn.pack(pady=5, fill='x')
-
         self.actualizar_lista()
 
+    def _crear_panel_izquierdo(self, parent):
+        parent.grid_rowconfigure(1, weight=1)
+        parent.grid_columnconfigure(0, weight=1)
+
+        # Contenedor para la lista de clientes
+        clientes_container = ttk.Frame(parent, style="ContentPane.TFrame")
+        clientes_container.grid(row=0, column=0, sticky="nsew", pady=(0,5))
+        clientes_container.rowconfigure(1, weight=1)
+        clientes_container.columnconfigure(0, weight=1)
+
+        ttk.Label(clientes_container, text="Listado de Clientes", style="SectionTitle.TLabel").grid(row=0, column=0, sticky="ew")
+        
+        # Filtro de búsqueda
+        search_frame = ttk.Frame(clientes_container, padding=5)
+        search_frame.grid(row=1, column=0, sticky="ew")
+        search_frame.columnconfigure(1, weight=1)
+        ttk.Label(search_frame, text="Buscar:").grid(row=0, column=0)
+        self.search_var = tk.StringVar()
+        self.search_var.trace_add("write", lambda n, i, m: self.actualizar_lista())
+        search_entry = ttk.Entry(search_frame, textvariable=self.search_var)
+        search_entry.grid(row=0, column=1, sticky="ew", padx=5)
+
+        # Treeview de clientes
+        tree_content = ttk.Frame(clientes_container)
+        tree_content.grid(row=2, column=0, sticky="nsew", padx=5, pady=(0,5))
+        tree_content.grid_rowconfigure(0, weight=1); tree_content.grid_columnconfigure(0, weight=1)
+
+        columnas = ("id", "nombre", "saldo")
+        self.tree = ttk.Treeview(tree_content, columns=columnas, show="headings", displaycolumns=("nombre", "saldo"))
+        self.tree.heading("nombre", text="Razón Social")
+        self.tree.heading("saldo", text="Saldo")
+        self.tree.column("saldo", anchor="e", width=100)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        self.tree.bind("<<TreeviewSelect>>", self.on_cliente_selected)
+
+        # Botones de acción para el listado
+        buttons_frame = ttk.Frame(parent)
+        buttons_frame.grid(row=1, column=0, sticky="ew")
+        ttk.Button(buttons_frame, text="Nuevo", command=self.abrir_ventana_creacion).pack(side="left", expand=True, fill="x", padx=2)
+        ttk.Button(buttons_frame, text="Modificar", command=self.abrir_ventana_edicion).pack(side="left", expand=True, fill="x", padx=2)
+
+    def _crear_panel_derecho(self, parent):
+        parent.grid_rowconfigure(1, weight=1)
+        parent.grid_columnconfigure(0, weight=1)
+        
+        # Etiqueta inicial
+        self.placeholder_label = ttk.Label(parent, text="Seleccione un cliente para ver su detalle", font=("Helvetica", 14, "italic"), style="TLabel")
+        self.placeholder_label.place(relx=0.5, rely=0.5, anchor="center")
+
+        # --- Contenedores que se mostrarán al seleccionar un cliente ---
+        self.detalle_container = ttk.Frame(parent) # Contenedor principal para los detalles
+        
+        # Sección de Datos
+        datos_container = ttk.Frame(self.detalle_container, style="ContentPane.TFrame")
+        datos_container.pack(fill="x", pady=(0, 10))
+        ttk.Label(datos_container, text="Datos del Cliente", style="SectionTitle.TLabel").pack(fill="x")
+        datos_frame = ttk.Frame(datos_container, padding=10)
+        datos_frame.pack(fill="x")
+        datos_frame.columnconfigure(1, weight=1)
+        
+        self.detalle_labels = {}
+        campos = [("Razón Social:", "razon_social"), ("CUIT/DNI:", "cuit_dni"), ("Teléfono:", "telefono"), ("Saldo Actual:", "saldo_cuenta_corriente")]
+        for i, (texto, clave) in enumerate(campos):
+            ttk.Label(datos_frame, text=texto, font=("Helvetica", 9, "bold")).grid(row=i, column=0, sticky="w")
+            self.detalle_labels[clave] = ttk.Label(datos_frame, text="-")
+            self.detalle_labels[clave].grid(row=i, column=1, sticky="w", padx=5)
+
+        # Sección de Historial
+        historial_container = ttk.Frame(self.detalle_container, style="ContentPane.TFrame")
+        historial_container.pack(fill="both", expand=True)
+        historial_container.rowconfigure(1, weight=1); historial_container.columnconfigure(0, weight=1)
+        ttk.Label(historial_container, text="Historial de Cuenta Corriente", style="SectionTitle.TLabel").grid(row=0, column=0, sticky="ew")
+        
+        historial_frame = ttk.Frame(historial_container)
+        historial_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+        historial_frame.rowconfigure(0, weight=1); historial_frame.columnconfigure(0, weight=1)
+
+        columnas_hist = ("fecha", "tipo", "monto", "saldo")
+        self.tree_historial = ttk.Treeview(historial_frame, columns=columnas_hist, show="headings")
+        self.tree_historial.heading("fecha", text="Fecha"); self.tree_historial.heading("tipo", text="Tipo Movimiento"); self.tree_historial.heading("monto", text="Monto"); self.tree_historial.heading("saldo", text="Saldo Resultante")
+        self.tree_historial.column("monto", anchor="e"); self.tree_historial.column("saldo", anchor="e")
+        self.tree_historial.grid(row=0, column=0, sticky="nsew")
+        
+        # Botones de acción para el historial
+        buttons_hist_frame = ttk.Frame(self.detalle_container)
+        buttons_hist_frame.pack(fill="x", pady=10)
+        ttk.Button(buttons_hist_frame, text="Registrar Pago", command=self.registrar_pago).pack(side="left", expand=True, fill="x", padx=2)
+        ttk.Button(buttons_hist_frame, text="Imprimir Resumen", command=self.imprimir_resumen).pack(side="left", expand=True, fill="x", padx=2)
+        
     def actualizar_lista(self):
+        # Limpiamos el panel de detalles
+        self.on_cliente_selected(None)
+        
         for row in self.tree.get_children():
             self.tree.delete(row)
         
         criterio = self.search_var.get()
+        # Aquí necesitaremos una función que traiga TODOS los clientes y su saldo.
+        # Por ahora, simulamos con las funciones existentes.
         clientes = clientes_db.obtener_clientes(criterio=criterio)
+        clientes_con_saldo = {c[0]: c[2] for c in clientes_db.obtener_clientes_con_saldo()}
+        
         for cliente in clientes:
-            self.tree.insert("", "end", values=cliente)
+            cliente_id = cliente[0]
+            nombre = cliente[1]
+            saldo = clientes_con_saldo.get(cliente_id, 0.0)
+            
+            display_nombre = f"💰 {nombre}" if saldo != 0 else nombre
+            display_saldo = f"$ {saldo:,.2f}" if saldo != 0 else ""
+            
+            self.tree.insert("", "end", iid=cliente_id, values=(cliente_id, display_nombre, display_saldo))
+
+    def on_cliente_selected(self, event=None):
+        selected_item = self.tree.focus()
+        
+        if not selected_item:
+            # Ocultamos el panel de detalles y mostramos el mensaje inicial
+            self.detalle_container.pack_forget()
+            self.placeholder_label.place(relx=0.5, rely=0.5, anchor="center")
+            return
+            
+        # Si hay selección, mostramos el panel de detalles y ocultamos el mensaje
+        self.placeholder_label.place_forget()
+        self.detalle_container.pack(fill="both", expand=True, pady=(0,5))
+        
+        cliente_id = int(selected_item)
+        
+        # Cargar datos del cliente en el panel de detalles
+        cliente_data = clientes_db.obtener_cliente_por_id(cliente_id)
+        if cliente_data:
+            keys = clientes_db.get_cliente_column_names()
+            cliente_dict = dict(zip(keys, cliente_data))
+            
+            self.detalle_labels["razon_social"].config(text=cliente_dict.get("razon_social", "-"))
+            self.detalle_labels["cuit_dni"].config(text=cliente_dict.get("cuit_dni", "-"))
+            self.detalle_labels["telefono"].config(text=cliente_dict.get("telefono", "-"))
+            
+            saldo = cliente_dict.get("saldo_cuenta_corriente", 0.0)
+            self.detalle_labels["saldo_cuenta_corriente"].config(text=f"$ {saldo:,.2f}", foreground="red" if saldo > 0 else "green")
+            
+        # Cargar historial de cuenta corriente
+        for row in self.tree_historial.get_children():
+            self.tree_historial.delete(row)
+        
+        historial = clientes_db.obtener_cuenta_corriente_cliente(cliente_id)
+        for mov in historial:
+            fecha, tipo, monto, saldo_res = mov
+            valores = (fecha, tipo, f"$ {monto:,.2f}", f"$ {saldo_res:,.2f}")
+            self.tree_historial.insert("", "end", values=valores)
 
     def abrir_ventana_creacion(self):
         VentanaCliente(self, on_success_callback=lambda data: self.actualizar_lista())
@@ -222,78 +332,13 @@ class ClientesFrame(ttk.Frame):
     def abrir_ventana_edicion(self, event=None):
         selected_item = self.tree.focus()
         if not selected_item:
-            messagebox.showwarning("Sin Selección", "Por favor, seleccione un cliente de la lista para modificar.")
+            messagebox.showwarning("Sin Selección", "Por favor, seleccione un cliente para modificar.")
             return
-        # El ID se obtiene correctamente de los datos internos, aunque la columna no sea visible
-        cliente_id = self.tree.item(selected_item, "values")[0]
+        cliente_id = int(selected_item)
         VentanaCliente(self, cliente_id=cliente_id)
 
-    def eliminar_cliente(self):
-        selected_item = self.tree.focus()
-        if not selected_item:
-            messagebox.showwarning("Sin Selección", "Por favor, seleccione un cliente de la lista para eliminar.")
-            return
-        cliente_id = self.tree.item(selected_item, "values")[0]
-        razon_social = self.tree.item(selected_item, "values")[1]
-        if messagebox.askyesno("Confirmar Eliminación", f"¿Está seguro de que desea eliminar a '{razon_social}'?"):
-            clientes_db.eliminar_cliente(cliente_id)
-            messagebox.showinfo("Éxito", "Cliente eliminado correctamente.")
-            self.actualizar_lista()
-
-    def ver_historial_cliente(self):
-        selected_item = self.tree.focus()
-        if not selected_item:
-            messagebox.showwarning("Sin Selección", "Por favor, seleccione un cliente de la lista.")
-            return
+    def registrar_pago(self):
+        messagebox.showinfo("En Desarrollo", "La funcionalidad para registrar pagos se implementará en el siguiente paso.")
         
-        values = self.tree.item(selected_item, "values")
-        cliente_id, cliente_nombre = values[0], values[1]
-
-        historial_window = tk.Toplevel(self)
-        historial_window.title(f"Historial de Ventas - {cliente_nombre}")
-        historial_window.transient(self)
-        historial_window.grab_set()
-        
-        filtros_frame = ttk.Frame(historial_window, padding="10")
-        filtros_frame.pack(fill="x")
-        ttk.Label(filtros_frame, text="Desde:").pack(side="left", padx=(0,5))
-        fecha_desde_entry = DateEntry(filtros_frame, date_pattern='yyyy-mm-dd', width=12)
-        fecha_desde_entry.pack(side="left", padx=5)
-        ttk.Label(filtros_frame, text="Hasta:").pack(side="left", padx=5)
-        fecha_hasta_entry = DateEntry(filtros_frame, date_pattern='yyyy-mm-dd', width=12)
-        fecha_hasta_entry.pack(side="left", padx=5)
-
-        tree_frame = ttk.Frame(historial_window)
-        tree_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        columnas = ("id", "fecha", "nro", "total", "estado")
-        tree_historial = ttk.Treeview(tree_frame, columns=columnas, show="headings", displaycolumns=("fecha", "nro", "total", "estado"))
-        tree_historial.heading("fecha", text="Fecha")
-        tree_historial.heading("nro", text="Comprobante")
-        tree_historial.heading("total", text="Monto Total")
-        tree_historial.heading("estado", text="Estado")
-        tree_historial.column("total", anchor="e")
-        tree_historial.pack(side="left", fill="both", expand=True)
-
-        scrollbar_historial = ttk.Scrollbar(tree_frame, orient="vertical", command=tree_historial.yview)
-        scrollbar_historial.pack(side='right', fill='y')
-        tree_historial.configure(yscrollcommand=scrollbar_historial.set)
-
-        def cargar_historial():
-            for row in tree_historial.get_children():
-                tree_historial.delete(row)
-            
-            desde = fecha_desde_entry.get() if fecha_desde_entry.get_date() else None
-            hasta = fecha_hasta_entry.get() if fecha_hasta_entry.get_date() else None
-            
-            ventas = ventas_db.obtener_ventas_por_cliente(cliente_id, desde, hasta)
-            for venta in ventas:
-                id_venta, fecha, nro_comp, monto_total, estado = venta
-                valores_formateados = (id_venta, fecha, nro_comp, f"$ {monto_total:.2f}", estado)
-                tree_historial.insert("", "end", values=valores_formateados)
-        
-        ttk.Button(filtros_frame, text="Filtrar", command=cargar_historial).pack(side="left", padx=10)
-        
-        fecha_desde_entry.set_date(None)
-        fecha_hasta_entry.set_date(None)
-        cargar_historial()
+    def imprimir_resumen(self):
+        messagebox.showinfo("En Desarrollo", "La funcionalidad para imprimir resúmenes se implementará próximamente.")

@@ -1,23 +1,12 @@
-# Archivo: app/database/usuarios_db.py
+# Ubicación: app/database/usuarios_db.py (MODIFICADO)
 import sqlite3
-import os
 import bcrypt
-from datetime import datetime
+from app.utils.db_manager import crear_conexion
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_DIR = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), 'database')
-DB_PATH = os.path.join(DB_DIR, 'gestion.db')
-
-def _crear_conexion():
-    try:
-        return sqlite3.connect(DB_PATH, timeout=10)
-    except sqlite3.Error as e:
-        print(f"Error al conectar con la base de datos: {e}")
-        return None
 
 def validar_usuario(nombre_usuario, clave):
     """Valida las credenciales del usuario."""
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return None
     try:
         cursor = conn.cursor()
@@ -34,7 +23,7 @@ def validar_usuario(nombre_usuario, clave):
 
 def obtener_permisos_usuario(usuario_id):
     """Obtiene un diccionario con los módulos permitidos para un usuario."""
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return {}
     try:
         cursor = conn.cursor()
@@ -52,7 +41,7 @@ def obtener_permisos_usuario(usuario_id):
 
 def obtener_todos_los_usuarios():
     """Obtiene una lista de todos los usuarios (sin la clave)."""
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return []
     try:
         cursor = conn.cursor()
@@ -64,7 +53,7 @@ def obtener_todos_los_usuarios():
 
 def crear_usuario(nombre_usuario, clave, rol):
     """Crea un nuevo usuario con la contraseña hasheada."""
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return "Error de conexión."
     try:
         clave_hasheada = bcrypt.hashpw(clave.encode('utf-8'), bcrypt.gensalt())
@@ -83,7 +72,7 @@ def crear_usuario(nombre_usuario, clave, rol):
 
 def eliminar_usuario(usuario_id):
     """Elimina un usuario de la base de datos."""
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return "Error de conexión."
     try:
         cursor = conn.cursor()
@@ -101,7 +90,7 @@ def guardar_permisos_usuario(usuario_id, permisos):
     Guarda la configuración de permisos para un usuario.
     permisos es un diccionario ej: {'Caja': True, 'Artículos': False}
     """
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return "Error de conexión."
     try:
         cursor = conn.cursor()
@@ -125,7 +114,7 @@ def guardar_permisos_usuario(usuario_id, permisos):
 
 def modificar_clave_usuario(usuario_id, nueva_clave):
     """Modifica la contraseña de un usuario existente."""
-    conn = _crear_conexion()
+    conn = crear_conexion()
     if conn is None: return "Error de conexión."
     try:
         clave_hasheada = bcrypt.hashpw(nueva_clave.encode('utf-8'), bcrypt.gensalt())

@@ -2,13 +2,14 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 from app.database import usuarios_db
+from app.utils.constants import MODULOS_SISTEMA # <-- 1. IMPORTAMOS LA CONSTANTE
 
 class UsuariosFrame(ttk.Frame):
     def __init__(self, parent, style):
         super().__init__(parent, style="Content.TFrame")
         self.style = style
 
-        self.MODULOS = ["Caja", "POS / Venta", "Artículos", "Clientes", "Proveedores", "Compras", "Reportes", "Configuración"]
+        # self.MODULOS = ["Caja", "POS / Venta", "Artículos", "Clientes", "Proveedores", "Compras", "Reportes", "Configuración"] # <-- 2. ELIMINAMOS LA LISTA ANTIGUA
 
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1, minsize=300)
@@ -81,7 +82,7 @@ class UsuariosFrame(ttk.Frame):
         permisos_actuales = usuarios_db.obtener_permisos_usuario(usuario_id)
         
         self.permisos_vars = {}
-        for modulo in self.MODULOS:
+        for modulo in MODULOS_SISTEMA: # <-- 3. USAMOS LA CONSTANTE IMPORTADA
             var = tk.BooleanVar(value=modulo in permisos_actuales)
             chk = ttk.Checkbutton(self.permisos_frame, text=modulo, variable=var)
             chk.pack(anchor="w", padx=20, pady=2)

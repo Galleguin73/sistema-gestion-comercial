@@ -2,8 +2,9 @@ import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 from app.database import caja_db
 import json
+from .mixins.centering_mixin import CenteringMixin
 
-class VentanaCierreCaja(tk.Toplevel):
+class VentanaCierreCaja(tk.Toplevel, CenteringMixin):
     def __init__(self, parent, caja_id, monto_inicial, resumen_movimientos, callback_exito):
         super().__init__(parent)
         self.parent = parent
@@ -13,14 +14,18 @@ class VentanaCierreCaja(tk.Toplevel):
         self.callback = callback_exito
 
         self.title("Cierre de Caja Detallado")
-        self.geometry("600x400")
+        
+        # --- CAMBIO 3: Se elimina la geometría fija ---
+        # self.geometry("600x400")
+
         self.transient(parent)
         self.grab_set()
 
         main_frame = ttk.Frame(self, padding="10")
         main_frame.pack(fill='both', expand=True)
         main_frame.grid_columnconfigure(0, weight=1)
-        main_frame.grid_rowconfigure(0, weight=1)
+        # Ajustamos el peso de la fila para que la tabla pueda crecer si es necesario
+        main_frame.grid_rowconfigure(0, weight=1) 
 
         # --- Tabla de Cierre ---
         tree_frame = ttk.Frame(main_frame)
@@ -29,7 +34,7 @@ class VentanaCierreCaja(tk.Toplevel):
         tree_frame.grid_rowconfigure(0, weight=1)
 
         columnas = ("medio_pago", "saldo_esperado", "monto_real", "diferencia")
-        self.tree_cierre = ttk.Treeview(tree_frame, columns=columnas, show="headings")
+        self.tree_cierre = ttk.Treeview(tree_frame, columns=columnas, show="headings", height=5) # Altura inicial
         self.tree_cierre.grid(row=0, column=0, sticky="nsew")
         
         self.tree_cierre.heading("medio_pago", text="Medio de Pago")
@@ -37,22 +42,30 @@ class VentanaCierreCaja(tk.Toplevel):
         self.tree_cierre.heading("monto_real", text="Monto Real Contado")
         self.tree_cierre.heading("diferencia", text="Diferencia")
 
-        self.tree_cierre.column("saldo_esperado", anchor="e")
-        self.tree_cierre.column("monto_real", anchor="e")
-        self.tree_cierre.column("diferencia", anchor="e")
+        self.tree_cierre.column("medio_pago", width=150)
+        self.tree_cierre.column("saldo_esperado", anchor="e", width=120)
+        self.tree_cierre.column("monto_real", anchor="e", width=150)
+        self.tree_cierre.column("diferencia", anchor="e", width=120)
 
         # --- Botones ---
         btn_frame = ttk.Frame(main_frame)
-        btn_frame.grid(row=1, column=0, sticky="e")
+        btn_frame.grid(row=1, column=0, sticky="e", pady=(10, 0))
         
         ttk.Button(btn_frame, text="Calcular Diferencia (Efectivo)", command=self.calcular_diferencias).pack(side="left", padx=5)
         self.btn_confirmar = ttk.Button(btn_frame, text="Confirmar Cierre de Caja", command=self.confirmar_cierre, state="disabled")
         self.btn_confirmar.pack(side="left", padx=5)
 
         self.popular_tabla()
+        
+        # --- CAMBIO 4: Se llama a la función para centrar la ventana ---
+        self.center_window()
 
     def popular_tabla(self):
         """Llena la tabla con los datos del resumen."""
+        # Limpiamos la tabla antes de llenarla
+        for i in self.tree_cierre.get_children():
+            self.tree_cierre.delete(i)
+            
         ingresos_efectivo = self.resumen_movimientos.get('Efectivo', {}).get('ingresos', 0.0)
         egresos_efectivo = self.resumen_movimientos.get('Efectivo', {}).get('egresos', 0.0)
         saldo_esperado_efectivo = self.monto_inicial + ingresos_efectivo - egresos_efectivo
@@ -69,12 +82,10 @@ class VentanaCierreCaja(tk.Toplevel):
         self.tree_cierre.tag_configure('efectivo_row', font=('Helvetica', 9, 'bold'))
         self.tree_cierre.bind("<Double-1>", self.editar_celda_monto_real)
 
-    # --- FUNCIÓN MODIFICADA ---
     def editar_celda_monto_real(self, event):
         """Permite al usuario editar el monto real SÓLO para el efectivo."""
         selected_iid = self.tree_cierre.focus()
         
-        # Solo permitir editar si la fila es la de Efectivo
         if selected_iid != "Efectivo":
             return
 
@@ -82,7 +93,7 @@ class VentanaCierreCaja(tk.Toplevel):
         if region != "cell": return
 
         column = self.tree_cierre.identify_column(event.x)
-        if column != "#3": return # Columna "Monto Real Contado"
+        if column != "#3": return
         
         monto_ingresado = simpledialog.askfloat("Ingresar Monto Real", 
                                                 f"Ingrese el monto real para {selected_iid}:",
@@ -93,7 +104,6 @@ class VentanaCierreCaja(tk.Toplevel):
             self.tree_cierre.item(selected_iid, values=tuple(valores_actuales))
             self.btn_confirmar.config(state="disabled")
 
-    # --- FUNCIÓN MODIFICADA ---
     def calcular_diferencias(self):
         """Calcula y muestra la diferencia SÓLO para el efectivo."""
         try:
@@ -110,7 +120,7 @@ class VentanaCierreCaja(tk.Toplevel):
             valores[3] = f"{diferencia:.2f}"
             self.tree_cierre.item("Efectivo", values=tuple(valores))
             
-            self.btn_confirmar.config(state="normal") # Habilitar confirmación
+            self.btn_confirmar.config(state="normal")
         except (ValueError, IndexError):
             messagebox.showerror("Error", "No se pudo calcular la diferencia. Verifique los montos.", parent=self)
             self.btn_confirmar.config(state="disabled")
@@ -123,7 +133,6 @@ class VentanaCierreCaja(tk.Toplevel):
         for iid in self.tree_cierre.get_children():
             valores = self.tree_cierre.item(iid, "values")
             
-            # Aseguramos que los valores no numéricos se manejen como 0.0
             try:
                 real = float(valores[2]) if valores[2] != "N/A" else 0.0
                 diferencia = float(valores[3]) if valores[3] != "N/A" else 0.0
